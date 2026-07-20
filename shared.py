@@ -1,0 +1,52 @@
+"""
+Shared HTTP helpers for modules that call external APIs.
+
+Provides a small retry/backoff wrapper around `requests`, following the same
+pattern used by EPİAŞ integrations elsewhere: retry on connection errors,
+timeouts, and 5xx responses (transient / server-side problems, likely to
+pass on retry), but return client errors (4xx) as-is on the first try since
+retrying won't change them.
+"""
+
+import time
+from typing import Any, Optional
+
+import requests
+
+MAX_RETRIES = 3
+BACKOFF_BASE_SECONDS = 1.0
+
+
+class ApiError(Exception):
+    """A user-facing error while talking to an external API."""
+
+
+def request_with_retries(
+    method: str, url: str, *, timeout: float, error_context: str, **kwargs: Any
+) -> requests.Response:
+    """Issue an HTTP request with exponential-backoff retries for transient failures.
+
+    Retries on connection errors, timeouts, and 5xx responses. Client errors
+    like 400/404 are returned as-is on the first try, since retrying won't
+    change them.
+    """
+    last_exc: Optional[Exception] = None
+
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            response = requests.request(method, url, timeout=timeout, **kwargs)
+        except requests.exceptions.RequestException as exc:
+            last_exc = exc
+        else:
+            if response.status_code < 500:
+                return response
+            last_exc = ApiError(
+                f"{error_context}: server error (HTTP {response.status_code})."
+            )
+
+        if attempt < MAX_RETRIES:
+            time.sleep(BACKOFF_BASE_SECONDS * (2**attempt))
+
+    if isinstance(last_exc, requests.exceptions.RequestException):
+        raise ApiError(f"{error_context}: {last_exc}") from last_exc
+    raise last_exc  # the ApiError built above for repeated 5xx responses
