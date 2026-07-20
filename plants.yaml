@@ -5,9 +5,13 @@
 # veya main.py'da başka bir değişiklik gerekmez.
 
 2579:
-  name: "Karapınar GES"
-  lat: 39.9
-  lon: 32.8
-  # TODO: gerçek kurulu güç (MWp) ile güncelleyin - bu bir yer tutucudur,
-  # doğrulanmış bir değer değildir.
-  capacity_mw: 10.0
+  name: "Kalyon Karapınar YEKA-1 GES"
+  # Konya/Karapınar, kaynak: tr.wikipedia.org/wiki/Karapınar_Güneş_Enerjisi_Santralı
+  lat: 37.7908
+  lon: 33.5847
+  # AC (şebeke bağlantı) kapasitesi = 1000 MW; bu, production_mwh'nin (gerçek
+  # şebeke enjeksiyonu) fiilen üstüne çıkamayacağı tavan, bu yüzden capacity_mw
+  # olarak bunu kullanıyoruz. Panel (DC) nameplate kapasitesi kaynaklara göre
+  # 1350 MWp - inverter clipping'in nedeni bu fark (DC>AC), fiziksel modelin
+  # ac_capacity_mw kalibrasyonu bunu ayrıca tahmin ediyor zaten.
+  capacity_mw: 1000.0

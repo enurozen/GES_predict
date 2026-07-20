@@ -39,6 +39,6 @@ def test_load_plant_unregistered_id_raises(tmp_path):
 def test_load_plant_uses_default_registry_path():
     plant = load_plant(2579)
 
-    assert plant["name"] == "Karapınar GES"
-    assert plant["lat"] == 39.9
-    assert plant["lon"] == 32.8
+    assert plant["name"] == "Kalyon Karapınar YEKA-1 GES"
+    assert plant["lat"] == pytest.approx(37.7908)
+    assert plant["lon"] == pytest.approx(33.5847)
