@@ -46,10 +46,10 @@ jobs:
             --lon "$PLANT_LON" \
             --start "${{ steps.date.outputs.yesterday }}" \
             --end "${{ steps.date.outputs.yesterday }}" \
-            --output "data/santral_${PLANT_ID}_${{ steps.date.outputs.yesterday }}.csv"
+            --output "data/${PLANT_ID}/${{ steps.date.outputs.yesterday }}.csv"
 
       - name: Commit CSV to data/
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "data: santral ${{ env.PLANT_ID }} - ${{ steps.date.outputs.yesterday }}"
-          file_pattern: "data/*.csv"
+          file_pattern: "data/**/*.csv"
