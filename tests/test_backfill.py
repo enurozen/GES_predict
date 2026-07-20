@@ -136,3 +136,18 @@ def test_backfill_unregistered_plant_fails_before_any_network_call(tmp_path, mon
 
     assert rc == 1
     m_tgt.assert_not_called()
+
+
+def test_backfill_rejects_end_date_of_today_or_later(tmp_path, monkeypatch):
+    _set_creds(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    today = date.today().isoformat()
+    with patch("backfill.get_tgt") as m_tgt:
+        rc = backfill.main([
+            "--plant-id", "2579",
+            "--start", "2026-06-01", "--end", today,
+        ])
+
+    assert rc == 1
+    m_tgt.assert_not_called()

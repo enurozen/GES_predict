@@ -56,6 +56,15 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("Start date cannot be after end date.")
         return 1
 
+    today = date.today()
+    if args.end >= today:
+        logger.error(
+            "End date (%s) must be before today (%s): EPİAŞ generation data "
+            "isn't settled/available until the day is fully over.",
+            args.end, today,
+        )
+        return 1
+
     try:
         plant = load_plant(args.plant_id)
     except PlantNotFoundError as exc:
