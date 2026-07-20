@@ -16,6 +16,9 @@ hava durumu verisini birleştirip eğitim seti üreten bir veri pipeline'ı.
 - `merge.py` — `build_training_dataset`: üretim ve hava verisini timestamp
   üzerinden inner join ile birleştirir.
 - `shared.py` — HTTP çağrıları için ortak retry/backoff yardımcı fonksiyonu.
+- `plants.yaml` / `plants.py` — santral kayıt defteri: her `plant_id` için
+  `lat`/`lon`/`capacity_mw` tek bir yerde tanımlı, `main.py` ve workflow
+  buradan okur.
 - `main.py` — bu adımları uçtan uca çalıştıran CLI.
 - `.github/workflows/daily_datapull.yml` — günlük otomatik veri çekme
   workflow'u.
@@ -29,21 +32,38 @@ hava durumu verisini birleştirip eğitim seti üreten bir veri pipeline'ı.
 pip install -r requirements.txt
 ```
 
+## Santral kayıt defteri (`plants.yaml`)
+
+`main.py`'a `--plant-id` dışında `--lat`/`--lon` girilmez; bu değerler
+`plants.yaml`'dan okunur, tek doğruluk kaynağı orasıdır (bkz.
+[plants.yaml](plants.yaml)). Yeni bir santral eklemek için o dosyaya bir
+girdi daha eklemek yeterli:
+
+```yaml
+2579:
+  name: "Karapınar GES"
+  lat: 39.9
+  lon: 32.8
+  capacity_mw: 10.0
+```
+
+`--plant-id` değeri `plants.yaml`'da yoksa `main.py` net bir hata verip
+çıkar (yanlış/eksik konumla sessizce çalışmaz).
+
 ## `main.py` kullanımı
 
 ```bash
 python main.py \
   --plant-id 2579 \
-  --lat 39.9 --lon 32.8 \
   --start 2025-06-01 --end 2025-06-30 \
   --output data/training_set.csv
 ```
 
-Adımlar: EPİAŞ'a giriş yapıp TGT alır -> `--start`/`--end` aralığı için
-saatlik üretim verisi çeker -> aynı aralık için `--lat`/`--lon` konumunun
-hava durumu verisini çeker -> ikisini timestamp üzerinden birleştirir ->
-sonucu `--output` yoluna CSV olarak yazar. Eksik/uyumsuz saatler
-(`merge.py`) uyarı olarak loglanıp atlanır.
+Adımlar: `--plant-id`'yi `plants.yaml`'da arar -> EPİAŞ'a giriş yapıp TGT
+alır -> `--start`/`--end` aralığı için saatlik üretim verisi çeker ->
+santralin kayıtlı konumu için hava durumu verisini çeker -> ikisini
+timestamp üzerinden birleştirir -> sonucu `--output` yoluna CSV olarak
+yazar. Eksik/uyumsuz saatler (`merge.py`) uyarı olarak loglanıp atlanır.
 
 Kimlik bilgileri **ortam değişkenlerinden** okunur, komut satırı argümanı
 olarak verilmez ve hiçbir yere loglanmaz:
@@ -70,9 +90,10 @@ kaydeder (örn. `data/2579/2026-07-19.csv`) — santral bazlı klasörleme,
 ileride başka santraller eklendiğinde `data/` tek bir düz klasöre
 dolmasın diye.
 
-Santral kimliği/konumu (`PLANT_ID`, `PLANT_LAT`, `PLANT_LON`) workflow
-dosyasının en üstünde düz env değişkeni olarak tanımlı — gizli bilgi
-değildir, farklı bir santral için doğrudan dosyada güncellenebilir.
+Workflow, hangi santral için çalışacağını `PLANT_ID` env değişkeninden
+bilir (dosyanın en üstünde, gizli bilgi değildir) ve konum/kapasite
+bilgisini `plants.yaml`'dan okur — farklı bir santral için hem `PLANT_ID`
+hem `plants.yaml`'daki ilgili girdi güncellenmeli.
 
 ### Gerekli GitHub Secrets
 

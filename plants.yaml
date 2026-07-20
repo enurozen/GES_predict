@@ -1,0 +1,13 @@
+# Santral kayıt defteri: her plant_id için tek doğruluk kaynağı (lat/lon/capacity_mw).
+# main.py ve daily_datapull.yml buradan okur; --lat/--lon elle girilmez.
+#
+# Yeni bir santral eklemek için buraya bir girdi daha ekleyin, plants.py
+# veya main.py'da başka bir değişiklik gerekmez.
+
+2579:
+  name: "Karapınar GES"
+  lat: 39.9
+  lon: 32.8
+  # TODO: gerçek kurulu güç (MWp) ile güncelleyin - bu bir yer tutucudur,
+  # doğrulanmış bir değer değildir.
+  capacity_mw: 10.0

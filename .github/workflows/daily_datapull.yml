@@ -11,10 +11,9 @@ permissions:
   contents: write  # needed so the workflow can commit the CSV back to data/
 
 env:
-  # Santral'e göre güncelleyin - bunlar gizli değil, sadece santral bilgisi.
+  # plants.yaml'da bir girdisi olan santral ID'si - lat/lon/capacity_mw
+  # oradan okunur, burada tekrar girilmez.
   PLANT_ID: "2579"
-  PLANT_LAT: "39.9"
-  PLANT_LON: "32.8"
 
 jobs:
   pull-data:
@@ -42,8 +41,6 @@ jobs:
         run: |
           python main.py \
             --plant-id "$PLANT_ID" \
-            --lat "$PLANT_LAT" \
-            --lon "$PLANT_LON" \
             --start "${{ steps.date.outputs.yesterday }}" \
             --end "${{ steps.date.outputs.yesterday }}" \
             --output "data/${PLANT_ID}/${{ steps.date.outputs.yesterday }}.csv"
