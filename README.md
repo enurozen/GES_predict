@@ -19,12 +19,16 @@ hava durumu verisini birleştirip eğitim seti üreten bir veri pipeline'ı.
 - `plants.yaml` / `plants.py` — santral kayıt defteri: her `plant_id` için
   `lat`/`lon`/`capacity_mw` tek bir yerde tanımlı, `main.py` ve workflow
   buradan okur.
-- `main.py` — bu adımları uçtan uca çalıştıran CLI.
+- `main.py` — bu adımları uçtan uca çalıştıran, tek bir CSV üreten CLI.
+- `backfill.py` — geçmişe dönük geniş bir tarih aralığını tek seferde
+  çekip `data/<plant_id>/<tarih>.csv` yapısına günlük dosyalar halinde
+  yazan CLI (bkz. aşağıdaki "Geçmişe dönük veri (backfill)" bölümü).
 - `.github/workflows/daily_datapull.yml` — günlük otomatik veri çekme
   workflow'u.
-- `data/<plant_id>/<tarih>.csv` — `daily_datapull.yml`'in her gün ürettiği,
-  santral bazında klasörlenmiş eğitim verisi (bkz. aşağıdaki "Günlük
-  otomasyon" bölümü).
+- `.github/workflows/backfill_datapull.yml` — manuel tetiklenen, geçmişe
+  dönük toplu veri çekme workflow'u.
+- `data/<plant_id>/<tarih>.csv` — `daily_datapull.yml` ve `backfill.py`'ın
+  ürettiği, santral bazında klasörlenmiş eğitim verisi.
 
 ## Kurulum
 
@@ -72,6 +76,32 @@ olarak verilmez ve hiçbir yere loglanmaz:
 export EPIAS_USERNAME="you@example.com"
 export EPIAS_PASSWORD="your-epias-password"   # EPİAŞ'ın statik API key'i yok, hesap şifresi kullanılır
 ```
+
+## Geçmişe dönük veri (backfill)
+
+`daily_datapull.yml`'in gün gün birikmesini beklemek gerekmez - EPİAŞ ve
+Open-Meteo ikisi de geçmişe dönük (historical/archive) API'ler, tek seferde
+geniş bir aralık çekilebilir. İki yol var:
+
+**1) GitHub Actions üzerinden (yerel kurulum gerekmez):** Actions sekmesi ->
+**Backfill EPİAŞ Data** -> **Run workflow** -> `start`/`end` tarihlerini
+(ve gerekirse `plant_id`'yi) girip çalıştırın. Zaten eklediğiniz
+`EPIAS_USERNAME`/`EPIAS_PASSWORD` secrets'ını kullanır, sonucu
+`data/<plant_id>/` altına günlük CSV'ler halinde commit'ler.
+
+**2) Yerelde:**
+
+```bash
+export EPIAS_USERNAME="you@example.com"
+export EPIAS_PASSWORD="your-epias-password"
+python backfill.py --plant-id 2579 --start 2025-01-01 --end 2026-07-19
+```
+
+Her iki yol da `data/<plant_id>/<tarih>.csv` yapısına yazar — `daily_datapull.yml`'in
+her gün ürettiği dosyalarla aynı formatta, birbirinden ayırt edilemez.
+Zaten bir CSV'si olan günler **varsayılan olarak atlanır** (yarıda kalan
+bir backfill'i tekrar çalıştırmak güvenlidir, aynı günü tekrar çekmez);
+`--overwrite` ile o günleri yeniden çekip üzerine yazdırabilirsiniz.
 
 ## Testler
 

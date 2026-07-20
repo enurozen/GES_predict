@@ -1,0 +1,51 @@
+name: Backfill EPİAŞ Data
+
+# Manual only: fills in a historical date range in one run, instead of
+# waiting for daily_datapull.yml to accumulate days one at a time.
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Start date (YYYY-MM-DD)"
+        required: true
+      end:
+        description: "End date (YYYY-MM-DD)"
+        required: true
+      plant_id:
+        description: "Plant ID (must exist in plants.yaml)"
+        required: false
+        default: "2579"
+
+permissions:
+  contents: write  # needed so the workflow can commit CSVs back to data/
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Backfill historical data
+        env:
+          EPIAS_USERNAME: ${{ secrets.EPIAS_USERNAME }}
+          EPIAS_PASSWORD: ${{ secrets.EPIAS_PASSWORD }}
+        run: |
+          python backfill.py \
+            --plant-id "${{ inputs.plant_id }}" \
+            --start "${{ inputs.start }}" \
+            --end "${{ inputs.end }}"
+
+      - name: Commit backfilled CSVs
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "data: backfill santral ${{ inputs.plant_id }} (${{ inputs.start }} to ${{ inputs.end }})"
+          file_pattern: "data/**/*.csv"
