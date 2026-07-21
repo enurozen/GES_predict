@@ -37,6 +37,30 @@ def load_training_data(plant_id: int) -> pd.DataFrame:
     return df
 
 
+def split_train_test(
+    df: pd.DataFrame, test_days: int = 30, test_fraction: float | None = None
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Chronologically split into train/test by whole days (never splits a day in half).
+
+    Default holds out the most recent `test_days` days - as more data
+    accumulates, a fixed recent window stays representative of "now" and
+    lets training use everything older, instead of a %-based split that
+    would hold out a growing chunk of the most recent (most relevant) data.
+    Pass test_fraction to use a %-based split instead (legacy behavior).
+    """
+    dates = sorted(df["timestamp"].dt.date.unique())
+    if test_fraction is not None:
+        split_i = int(len(dates) * (1 - test_fraction))
+    else:
+        split_i = max(0, len(dates) - test_days)
+
+    test_dates = set(dates[split_i:])
+    date_col = df["timestamp"].dt.date
+    train_df = df[~date_col.isin(test_dates)].reset_index(drop=True)
+    test_df = df[date_col.isin(test_dates)].reset_index(drop=True)
+    return train_df, test_df
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the GES hybrid production model on collected data.")
     parser.add_argument(

@@ -1,11 +1,12 @@
 """
-Evaluate the hybrid model's real-world accuracy on held-out data: splits
-data/<plant_id>/*.csv chronologically (80/20), trains only on the first
-80%, then compares the physical-only baseline vs. the hybrid (physical+ML)
-model on the unseen last 20%.
+Evaluate the hybrid model's real-world accuracy on held-out data: holds
+out the most recent N days of data/<plant_id>/*.csv, trains only on
+everything older, then compares the physical-only baseline vs. the
+hybrid (physical+ML) model on the unseen recent days.
 
 Usage:
     python evaluate.py --plant-id 2579
+    python evaluate.py --plant-id 2579 --test-days 14
 """
 
 import argparse
@@ -17,7 +18,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from ges_uretim_tahmini import build_physical_baseline, calibrate_site_parameters, predict_production, train_residual_model
 from plants import PlantNotFoundError, load_plant
-from train import load_training_data
+from train import load_training_data, split_train_test
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -50,7 +51,11 @@ def hit_rate(actual: np.ndarray, predicted: np.ndarray, capacity_mw: float, tole
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate the GES hybrid model on held-out real data.")
     parser.add_argument("--plant-id", type=int, required=True)
-    parser.add_argument("--test-fraction", type=float, default=0.2, help="Fraction of days held out for testing")
+    parser.add_argument("--test-days", type=int, default=30, help="Most recent N days held out for testing")
+    parser.add_argument(
+        "--test-fraction", type=float, default=None,
+        help="Use a %%-based split instead of --test-days (e.g. 0.2 for the most recent 20%% of days)",
+    )
     parser.add_argument("--tolerance-pct", type=float, default=3.0, help="Hit-rate tolerance, as %% of capacity")
     return parser.parse_args(argv)
 
@@ -70,9 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", exc)
         return 1
 
-    split_idx = int(len(df) * (1 - args.test_fraction))
-    train_df = df.iloc[:split_idx].reset_index(drop=True)
-    test_df = df.iloc[split_idx:].reset_index(drop=True)
+    train_df, test_df = split_train_test(df, test_days=args.test_days, test_fraction=args.test_fraction)
     logger.info(
         "Train: %d rows (%s to %s) | Test: %d rows (%s to %s)",
         len(train_df), train_df["timestamp"].min(), train_df["timestamp"].max(),

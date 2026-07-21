@@ -31,7 +31,7 @@ def test_main_evaluates_and_returns_zero(tmp_path, monkeypatch, capsys):
     for day in days:
         _write_day(data_dir, day)
 
-    rc = evaluate.main(["--plant-id", "2579"])
+    rc = evaluate.main(["--plant-id", "2579", "--test-days", "2"])
 
     assert rc == 0
 

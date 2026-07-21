@@ -29,7 +29,7 @@ def test_main_writes_html_report(tmp_path, monkeypatch):
     for d in range(1, 11):
         _write_day(data_dir, f"2026-01-{d:02d}")
 
-    rc = report.main(["--plant-id", "2579", "--output", "reports/out.html"])
+    rc = report.main(["--plant-id", "2579", "--output", "reports/out.html", "--test-days", "2"])
 
     assert rc == 0
     out_path = tmp_path / "reports" / "out.html"

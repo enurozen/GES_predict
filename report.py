@@ -22,7 +22,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from evaluate import hit_rate, normalized_mae
 from ges_uretim_tahmini import build_physical_baseline, calibrate_site_parameters, predict_production, train_residual_model
 from plants import PlantNotFoundError, load_plant
-from train import load_training_data
+from train import load_training_data, split_train_test
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -33,7 +33,11 @@ TEMPLATE_PATH = Path(__file__).resolve().parent / "templates" / "report_template
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate a local HTML actual-vs-predicted report.")
     parser.add_argument("--plant-id", type=int, required=True)
-    parser.add_argument("--test-fraction", type=float, default=0.2, help="Fraction of days held out for the report")
+    parser.add_argument("--test-days", type=int, default=30, help="Most recent N days held out for the report")
+    parser.add_argument(
+        "--test-fraction", type=float, default=None,
+        help="Use a %%-based split instead of --test-days (e.g. 0.2 for the most recent 20%% of days)",
+    )
     parser.add_argument("--tolerance-pct", type=float, default=3.0, help="Hit-rate tolerance, as %% of capacity")
     parser.add_argument("--output", default="reports/report.html", help="Output HTML path")
     return parser.parse_args(argv)
@@ -54,9 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", exc)
         return 1
 
-    split_idx = int(len(df) * (1 - args.test_fraction))
-    train_df = df.iloc[:split_idx].reset_index(drop=True)
-    test_df = df.iloc[split_idx:].reset_index(drop=True)
+    train_df, test_df = split_train_test(df, test_days=args.test_days, test_fraction=args.test_fraction)
 
     lat, lon, capacity_mw = plant["lat"], plant["lon"], plant["capacity_mw"]
     calibration = calibrate_site_parameters(train_df, lat, lon, capacity_mw)
@@ -93,7 +95,8 @@ def main(argv: list[str] | None = None) -> int:
     html = html.replace("__PLANT_NAME__", plant["name"])
     html = html.replace("__DATA__", json.dumps(rows, ensure_ascii=False))
     html = html.replace("__RANGE__", f"{test_df['timestamp'].min().date()} – {test_df['timestamp'].max().date()}")
-    html = html.replace("__TEST_FRACTION_PCT__", str(round(args.test_fraction * 100)))
+    test_label = f"%{round(args.test_fraction * 100)}" if args.test_fraction is not None else f"{args.test_days} gün"
+    html = html.replace("__TEST_FRACTION_PCT__", test_label)
     html = html.replace("__PHYS_MAE__", f"{physical_mae:.1f}")
     html = html.replace("__HYB_MAE__", f"{hybrid_mae:.1f}")
     html = html.replace("__IMPROVE__", f"{improvement:.1f}")

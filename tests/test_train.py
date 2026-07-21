@@ -68,3 +68,51 @@ def test_main_unregistered_plant_fails_before_loading_data(tmp_path, monkeypatch
 
     assert rc == 1
     assert not (tmp_path / "models").exists()
+
+
+def _hourly_df(days: list[str]) -> pd.DataFrame:
+    rows = []
+    for day in days:
+        for h in range(24):
+            rows.append({"timestamp": pd.Timestamp(f"{day} {h:02d}:00:00"), "production_mwh": 1.0})
+    return pd.DataFrame(rows)
+
+
+def test_split_train_test_holds_out_last_n_days_by_default():
+    days = [f"2026-01-{d:02d}" for d in range(1, 11)]  # 10 days
+    df = _hourly_df(days)
+
+    train_df, test_df = train.split_train_test(df, test_days=3)
+
+    assert sorted(test_df["timestamp"].dt.date.astype(str).unique()) == days[-3:]
+    assert sorted(train_df["timestamp"].dt.date.astype(str).unique()) == days[:-3]
+    assert len(train_df) + len(test_df) == len(df)
+
+
+def test_split_train_test_never_splits_a_day():
+    days = [f"2026-01-{d:02d}" for d in range(1, 6)]
+    df = _hourly_df(days)
+
+    train_df, test_df = train.split_train_test(df, test_days=2)
+
+    assert set(train_df["timestamp"].dt.date) & set(test_df["timestamp"].dt.date) == set()
+
+
+def test_split_train_test_fraction_overrides_test_days():
+    days = [f"2026-01-{d:02d}" for d in range(1, 11)]  # 10 days
+    df = _hourly_df(days)
+
+    train_df, test_df = train.split_train_test(df, test_days=30, test_fraction=0.2)
+
+    # 20% of 10 days = 2 days held out, even though test_days=30 was also passed
+    assert sorted(test_df["timestamp"].dt.date.astype(str).unique()) == days[-2:]
+
+
+def test_split_train_test_test_days_larger_than_available_holds_out_everything():
+    days = [f"2026-01-{d:02d}" for d in range(1, 4)]  # 3 days
+    df = _hourly_df(days)
+
+    train_df, test_df = train.split_train_test(df, test_days=30)
+
+    assert train_df.empty
+    assert len(test_df) == len(df)
