@@ -192,6 +192,12 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     feats['hour_cos'] = np.cos(2 * np.pi * feats['hour'] / 24)
     feats['doy_sin'] = np.sin(2 * np.pi * feats['day_of_year'] / 365)
     feats['doy_cos'] = np.cos(2 * np.pi * feats['day_of_year'] / 365)
+    # Sabah/akşam ayrımı: düşük GHI sabah (gün doğumu, üretim genelde var) ile
+    # akşam (gün batımı, santral genelde o saatte üretimi kesiyor) arasında çok
+    # farklı davranıyor - saat tek başına bunu ayırt ettiremiyor çünkü mevsime
+    # göre kayıyor, bu yüzden GHI ile etkileşimli bir "öğleden sonra mı" bayrağı.
+    feats['is_afternoon'] = (feats['hour'] > 12).astype(int)
+    feats['ghi_x_afternoon'] = feats['ghi_forecast'] * feats['is_afternoon']
     return feats
 
 
