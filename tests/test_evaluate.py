@@ -50,3 +50,10 @@ def test_main_missing_data_fails_cleanly(tmp_path, monkeypatch):
     rc = evaluate.main(["--plant-id", "2579"])
 
     assert rc == 1
+
+
+def test_normalized_mae_scales_by_capacity():
+    actual = np.array([100.0, 200.0])
+    predicted = np.array([110.0, 180.0])  # abs errors: 10, 20 -> MAE = 15
+
+    assert evaluate.normalized_mae(actual, predicted, capacity_mw=1000.0) == 1.5

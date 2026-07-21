@@ -23,6 +23,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 
+def normalized_mae(actual: np.ndarray, predicted: np.ndarray, capacity_mw: float) -> float:
+    """MAE as a % of installed capacity (nMAE) - the standard solar-forecasting accuracy metric.
+
+    Plain MAPE blows up near sunrise/sunset, where actual production is close
+    to zero and any small absolute error becomes a huge percentage error.
+    Normalizing by capacity instead avoids that instability.
+    """
+    mae = mean_absolute_error(actual, predicted)
+    return float(mae / capacity_mw * 100)
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate the GES hybrid model on held-out real data.")
     parser.add_argument("--plant-id", type=int, required=True)
@@ -69,10 +80,14 @@ def main(argv: list[str] | None = None) -> int:
     hybrid_rmse = np.sqrt(mean_squared_error(actual, hybrid_test))
     improvement = (1 - hybrid_mae / physical_mae) * 100 if physical_mae else 0.0
 
+    physical_nmae = normalized_mae(actual, baseline_test, capacity_mw)
+    hybrid_nmae = normalized_mae(actual, hybrid_test, capacity_mw)
+
     logger.info("=== Test seti sonuçları (%s) ===", plant["name"])
-    logger.info("Sadece fiziksel model : MAE=%.3f MWh, RMSE=%.3f MWh", physical_mae, physical_rmse)
-    logger.info("Hibrit (fiziksel+ML)  : MAE=%.3f MWh, RMSE=%.3f MWh", hybrid_mae, hybrid_rmse)
-    logger.info("İyileşme: %%%.1f", improvement)
+    logger.info("Sadece fiziksel model : MAE=%.3f MWh, RMSE=%.3f MWh, nMAE=%%%.1f", physical_mae, physical_rmse, physical_nmae)
+    logger.info("Hibrit (fiziksel+ML)  : MAE=%.3f MWh, RMSE=%.3f MWh, nMAE=%%%.1f", hybrid_mae, hybrid_rmse, hybrid_nmae)
+    logger.info("İyileşme (MAE): %%%.1f", improvement)
+    logger.info("Doğruluk (kapasiteye göre, 100-nMAE): %%%.1f", 100 - hybrid_nmae)
     return 0
 
 
