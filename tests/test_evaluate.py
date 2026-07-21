@@ -57,3 +57,18 @@ def test_normalized_mae_scales_by_capacity():
     predicted = np.array([110.0, 180.0])  # abs errors: 10, 20 -> MAE = 15
 
     assert evaluate.normalized_mae(actual, predicted, capacity_mw=1000.0) == 1.5
+
+
+def test_hit_rate_counts_hours_within_tolerance():
+    actual = np.array([100.0, 100.0, 100.0, 100.0])
+    predicted = np.array([102.0, 200.0, 99.0, 50.0])  # abs errors: 2, 100, 1, 50
+    # capacity 1000, tolerance 3% -> 30 MW band: only errors 2 and 1 qualify -> 2/4 = 50%
+
+    assert evaluate.hit_rate(actual, predicted, capacity_mw=1000.0, tolerance_pct=3.0) == 50.0
+
+
+def test_hit_rate_zero_tolerance_requires_exact_match():
+    actual = np.array([10.0, 10.0])
+    predicted = np.array([10.0, 11.0])
+
+    assert evaluate.hit_rate(actual, predicted, capacity_mw=1000.0, tolerance_pct=0.0) == 50.0

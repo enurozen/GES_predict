@@ -34,10 +34,24 @@ def normalized_mae(actual: np.ndarray, predicted: np.ndarray, capacity_mw: float
     return float(mae / capacity_mw * 100)
 
 
+def hit_rate(actual: np.ndarray, predicted: np.ndarray, capacity_mw: float, tolerance_pct: float) -> float:
+    """% of hours where |predicted - actual| stays within tolerance_pct of capacity.
+
+    This is closer to what matters for imbalance-penalty exposure than an
+    average error: a few large misses can hide inside a good mean MAE, but
+    each one is what actually gets penalized. Tolerance is capacity-relative
+    (not %-of-actual) for the same reason nMAE is: actual is often near zero.
+    """
+    actual, predicted = np.asarray(actual), np.asarray(predicted)
+    tolerance_mw = capacity_mw * (tolerance_pct / 100)
+    return float(np.mean(np.abs(actual - predicted) <= tolerance_mw) * 100)
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate the GES hybrid model on held-out real data.")
     parser.add_argument("--plant-id", type=int, required=True)
     parser.add_argument("--test-fraction", type=float, default=0.2, help="Fraction of days held out for testing")
+    parser.add_argument("--tolerance-pct", type=float, default=3.0, help="Hit-rate tolerance, as %% of capacity")
     return parser.parse_args(argv)
 
 
@@ -83,11 +97,18 @@ def main(argv: list[str] | None = None) -> int:
     physical_nmae = normalized_mae(actual, baseline_test, capacity_mw)
     hybrid_nmae = normalized_mae(actual, hybrid_test, capacity_mw)
 
+    physical_hit = hit_rate(actual, baseline_test, capacity_mw, args.tolerance_pct)
+    hybrid_hit = hit_rate(actual, hybrid_test, capacity_mw, args.tolerance_pct)
+
     logger.info("=== Test seti sonuçları (%s) ===", plant["name"])
     logger.info("Sadece fiziksel model : MAE=%.3f MWh, RMSE=%.3f MWh, nMAE=%%%.1f", physical_mae, physical_rmse, physical_nmae)
     logger.info("Hibrit (fiziksel+ML)  : MAE=%.3f MWh, RMSE=%.3f MWh, nMAE=%%%.1f", hybrid_mae, hybrid_rmse, hybrid_nmae)
     logger.info("İyileşme (MAE): %%%.1f", improvement)
     logger.info("Doğruluk (kapasiteye göre, 100-nMAE): %%%.1f", 100 - hybrid_nmae)
+    logger.info(
+        "Tutturma oranı (±%%%.0f kapasite içinde kalan saat): Fiziksel=%%%.1f, Hibrit=%%%.1f",
+        args.tolerance_pct, physical_hit, hybrid_hit,
+    )
     return 0
 
 
