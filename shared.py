@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 import requests
 
-MAX_RETRIES = 3
+MAX_RETRIES = 6
 BACKOFF_BASE_SECONDS = 1.0
 
 
