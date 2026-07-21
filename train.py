@@ -1,0 +1,76 @@
+"""
+Train the hybrid (physical + ML residual) production model on real
+collected data: reads every data/<plant_id>/*.csv, looks up capacity_mw/
+lat/lon from plants.yaml, trains via ges_uretim_tahmini, and saves the
+fitted residual model.
+
+Usage:
+    python train.py --plant-id 2579 --output models/2579/model.joblib
+"""
+
+import argparse
+import logging
+import sys
+from pathlib import Path
+
+import joblib
+import pandas as pd
+
+from ges_uretim_tahmini import build_physical_baseline, train_residual_model
+from plants import PlantNotFoundError, load_plant
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
+
+
+def load_training_data(plant_id: int) -> pd.DataFrame:
+    """Concatenate every daily CSV under data/<plant_id>/ into one DataFrame."""
+    data_dir = Path("data") / str(plant_id)
+    csv_paths = sorted(data_dir.glob("*.csv"))
+    if not csv_paths:
+        raise FileNotFoundError(f"No CSV files found under {data_dir}")
+
+    df = pd.concat((pd.read_csv(p, parse_dates=["timestamp"]) for p in csv_paths), ignore_index=True)
+    df = df.sort_values("timestamp").drop_duplicates("timestamp").reset_index(drop=True)
+    return df
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train the GES hybrid production model on collected data.")
+    parser.add_argument(
+        "--plant-id", type=int, required=True,
+        help="Plant ID; reads data/<plant_id>/*.csv and looks it up in plants.yaml",
+    )
+    parser.add_argument("--output", required=True, help="Output path for the trained model (joblib)")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+
+    try:
+        plant = load_plant(args.plant_id)
+    except PlantNotFoundError as exc:
+        logger.error("%s", exc)
+        return 1
+
+    try:
+        df = load_training_data(args.plant_id)
+    except FileNotFoundError as exc:
+        logger.error("%s", exc)
+        return 1
+
+    logger.info("Loaded %d rows for %s (%s to %s)", len(df), plant["name"], df["timestamp"].min(), df["timestamp"].max())
+
+    baseline = build_physical_baseline(df, plant["lat"], plant["lon"], plant["capacity_mw"])
+    model = train_residual_model(df, baseline)
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model, output_path)
+    logger.info("Wrote trained model to %s", output_path)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
