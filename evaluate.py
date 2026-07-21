@@ -15,7 +15,7 @@ import sys
 import numpy as np
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-from ges_uretim_tahmini import build_physical_baseline, predict_production, train_residual_model
+from ges_uretim_tahmini import build_physical_baseline, calibrate_site_parameters, predict_production, train_residual_model
 from plants import PlantNotFoundError, load_plant
 from train import load_training_data
 
@@ -81,11 +81,24 @@ def main(argv: list[str] | None = None) -> int:
 
     lat, lon, capacity_mw = plant["lat"], plant["lon"], plant["capacity_mw"]
 
-    baseline_train = build_physical_baseline(train_df, lat, lon, capacity_mw)
+    # Kalibrasyon sadece train_df'ten - test setine sızmasın, dürüst bir
+    # held-out değerlendirme olsun.
+    calibration = calibrate_site_parameters(train_df, lat, lon, capacity_mw)
+    temp_coeff, efficiency_scale = calibration["temp_coeff"], calibration["efficiency_scale"]
+    ac_capacity_mw = calibration["ac_capacity_mw"]
+    logger.info(
+        "Kalibrasyon (train'den): efficiency_scale=%.4f, temp_coeff=%.5f, ac_capacity_mw=%.1f",
+        efficiency_scale, temp_coeff, ac_capacity_mw,
+    )
+
+    baseline_train = build_physical_baseline(train_df, lat, lon, capacity_mw, temp_coeff, efficiency_scale)
     model = train_residual_model(train_df, baseline_train)
 
-    baseline_test = build_physical_baseline(test_df, lat, lon, capacity_mw)
-    hybrid_test = predict_production(test_df, lat, lon, capacity_mw, model)
+    baseline_test = build_physical_baseline(test_df, lat, lon, capacity_mw, temp_coeff, efficiency_scale)
+    hybrid_test = predict_production(
+        test_df, lat, lon, capacity_mw, model,
+        temp_coeff=temp_coeff, efficiency_scale=efficiency_scale, ac_capacity_mw=ac_capacity_mw,
+    )
 
     actual = test_df["production_mwh"]
     physical_mae = mean_absolute_error(actual, baseline_test)

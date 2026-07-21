@@ -1,8 +1,10 @@
 """
 Train the hybrid (physical + ML residual) production model on real
 collected data: reads every data/<plant_id>/*.csv, looks up capacity_mw/
-lat/lon from plants.yaml, trains via ges_uretim_tahmini, and saves the
-fitted residual model.
+lat/lon from plants.yaml, calibrates site-specific physical parameters
+(efficiency, temp coefficient, real AC/inverter ceiling) from the same
+data, trains the residual model via ges_uretim_tahmini, and saves the
+fitted model bundled with its calibration.
 
 Usage:
     python train.py --plant-id 2579 --output models/2579/model.joblib
@@ -16,7 +18,7 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-from ges_uretim_tahmini import build_physical_baseline, train_residual_model
+from ges_uretim_tahmini import build_physical_baseline, calibrate_site_parameters, train_residual_model
 from plants import PlantNotFoundError, load_plant
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -62,12 +64,23 @@ def main(argv: list[str] | None = None) -> int:
 
     logger.info("Loaded %d rows for %s (%s to %s)", len(df), plant["name"], df["timestamp"].min(), df["timestamp"].max())
 
-    baseline = build_physical_baseline(df, plant["lat"], plant["lon"], plant["capacity_mw"])
+    calibration = calibrate_site_parameters(df, plant["lat"], plant["lon"], plant["capacity_mw"])
+    logger.info(
+        "Kalibrasyon: efficiency_scale=%.4f, temp_coeff=%.5f, ac_capacity_mw=%.1f (%d gündüz örneği)",
+        calibration["efficiency_scale"], calibration["temp_coeff"],
+        calibration["ac_capacity_mw"], calibration["n_daylight_samples"],
+    )
+
+    baseline = build_physical_baseline(
+        df, plant["lat"], plant["lon"], plant["capacity_mw"],
+        temp_coeff=calibration["temp_coeff"], efficiency_scale=calibration["efficiency_scale"],
+    )
     model = train_residual_model(df, baseline)
 
+    bundle = {"model": model, "calibration": calibration, "plant": plant}
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(model, output_path)
+    joblib.dump(bundle, output_path)
     logger.info("Wrote trained model to %s", output_path)
     return 0
 

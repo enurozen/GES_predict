@@ -55,8 +55,10 @@ def test_main_trains_and_saves_model(tmp_path, monkeypatch):
     assert rc == 0
     model_path = tmp_path / "models" / "2579" / "model.joblib"
     assert model_path.exists()
-    model = joblib.load(model_path)
-    assert hasattr(model, "predict")
+    bundle = joblib.load(model_path)
+    assert hasattr(bundle["model"], "predict")
+    assert "efficiency_scale" in bundle["calibration"]
+    assert bundle["plant"]["name"]
 
 
 def test_main_unregistered_plant_fails_before_loading_data(tmp_path, monkeypatch):

@@ -79,13 +79,16 @@ def clearsky_ghi_estimate(cos_zenith: float, ghi_toa_max: float = 1000.0) -> flo
 
 def physical_pv_power(ghi_forecast: float, temp_c: float, capacity_mw: float,
                        ghi_clearsky: float, ref_temp: float = 25.0,
-                       temp_coeff: float = -0.004) -> float:
+                       temp_coeff: float = -0.004,
+                       efficiency_scale: float = 1.0) -> float:
     """
     GHI tahmininden ve sıcaklıktan teorik PV gücünü (MW) hesaplar.
 
     - GHI oranı: gerçek/beklenen ışınımın kurulu güce oranı (basit lineer model)
     - Sıcaklık derating: panel sıcaklığı arttıkça verim düşer
       (tipik silikon panel katsayısı ~ -0.4%/°C, 25°C referans)
+    - efficiency_scale: nominal kapasiteye göre santralin gerçek etkin verimi
+      (calibrate_site_parameters'tan gelir; datasheet yoksa varsayılan 1.0)
     """
     if ghi_forecast <= 0:
         return 0.0
@@ -96,18 +99,21 @@ def physical_pv_power(ghi_forecast: float, temp_c: float, capacity_mw: float,
     temp_derating = 1 + temp_coeff * (panel_temp - ref_temp)
     temp_derating = np.clip(temp_derating, 0.5, 1.05)
 
-    power_mw = capacity_mw * irradiance_ratio * temp_derating
+    effective_capacity = capacity_mw * efficiency_scale
+    power_mw = effective_capacity * irradiance_ratio * temp_derating
     return max(0.0, power_mw)
 
 
 def build_physical_baseline(df: pd.DataFrame, lat: float, lon: float,
-                             capacity_mw: float) -> pd.Series:
+                             capacity_mw: float, temp_coeff: float = -0.004,
+                             efficiency_scale: float = 1.0) -> pd.Series:
     """Tüm zaman serisi için fiziksel baz tahmini üretir (MWh, saatlik ise MW=MWh)."""
     baseline = []
     for _, row in df.iterrows():
         zenith, cos_z = solar_position(row['timestamp'], lat, lon)
         ghi_cs = clearsky_ghi_estimate(cos_z)
-        p = physical_pv_power(row['ghi_forecast'], row['temp_c'], capacity_mw, ghi_cs)
+        p = physical_pv_power(row['ghi_forecast'], row['temp_c'], capacity_mw, ghi_cs,
+                               temp_coeff=temp_coeff, efficiency_scale=efficiency_scale)
         baseline.append(p)
     return pd.Series(baseline, index=df.index)
 
@@ -157,7 +163,7 @@ def calibrate_site_parameters(df_calib: pd.DataFrame, lat: float, lon: float,
 
     result = least_squares(
         residuals, x0=[0.85, -0.004],
-        bounds=([0.3, -0.01], [1.05, -0.001])
+        bounds=([0.05, -0.05], [1.05, -0.0005])
     )
     efficiency_scale, temp_coeff = result.x
 
@@ -230,15 +236,24 @@ def train_residual_model(df_train: pd.DataFrame, physical_baseline: pd.Series):
 
 
 def predict_production(df_new: pd.DataFrame, lat: float, lon: float,
-                        capacity_mw: float, residual_model) -> pd.Series:
-    """Yeni (gelecek) veri için nihai üretim tahmini: fiziksel + ML düzeltme."""
-    baseline = build_physical_baseline(df_new, lat, lon, capacity_mw)
+                        capacity_mw: float, residual_model,
+                        temp_coeff: float = -0.004, efficiency_scale: float = 1.0,
+                        ac_capacity_mw: float | None = None) -> pd.Series:
+    """Yeni (gelecek) veri için nihai üretim tahmini: fiziksel + ML düzeltme.
+
+    ac_capacity_mw verilirse üst sınır olarak kullanılır (invertör/şebeke
+    tavanı, nominal capacity_mw'den düşük olabilir - clipping'in nedeni budur);
+    verilmezse capacity_mw'ye geri döner.
+    """
+    baseline = build_physical_baseline(df_new, lat, lon, capacity_mw,
+                                        temp_coeff=temp_coeff, efficiency_scale=efficiency_scale)
     X_new = build_features(df_new)
     residual_pred = residual_model.predict(X_new)
 
     final_pred = baseline + residual_pred
-    # Fiziksel sınırlar: negatif olamaz, kurulu gücü aşamaz
-    final_pred = final_pred.clip(lower=0, upper=capacity_mw)
+    upper_bound = ac_capacity_mw if ac_capacity_mw is not None else capacity_mw
+    # Fiziksel sınırlar: negatif olamaz, şebeke/invertör tavanını aşamaz
+    final_pred = final_pred.clip(lower=0, upper=upper_bound)
     return final_pred
 
 
