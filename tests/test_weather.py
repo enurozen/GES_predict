@@ -79,3 +79,25 @@ def test_fetch_weather_range_connection_error_does_not_retry_forever():
     ), patch("shared.time.sleep"):
         with pytest.raises(ApiError, match="Could not fetch weather data"):
             weather.fetch_weather_range(39.9, 32.8, date(2026, 7, 1), date(2026, 7, 1))
+
+
+# --------------------------------------------------------------------------
+# fetch_weather_forecast
+# --------------------------------------------------------------------------
+
+def test_fetch_weather_forecast_hits_forecast_url_not_archive():
+    resp = _mock_response(200, json_data=_sample_body())
+    with patch("shared.requests.request", return_value=resp) as mock_request:
+        df = weather.fetch_weather_forecast(39.9, 32.8, date(2026, 7, 22), date(2026, 7, 24))
+
+    assert len(df) == 2
+    called_args = mock_request.call_args.args
+    assert called_args[1] == weather.FORECAST_URL
+    assert weather.ARCHIVE_URL not in called_args
+
+
+def test_fetch_weather_forecast_http_error():
+    resp = _mock_response(400)
+    with patch("shared.requests.request", return_value=resp):
+        with pytest.raises(ApiError, match="Open-Meteo"):
+            weather.fetch_weather_forecast(39.9, 32.8, date(2026, 7, 22), date(2026, 7, 24))
