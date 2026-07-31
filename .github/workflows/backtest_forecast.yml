@@ -16,6 +16,12 @@ on:
         description: "Most recent N days to hold out and score"
         required: false
         default: "14"
+  # TEMP: workflow_dispatch only fires from the default branch until this
+  # workflow file is merged there, so a push trigger is added here to get
+  # one real run on this feature branch. Remove this push block on merge.
+  push:
+    branches:
+      - claude/branch-analysis-9kdbvo
 
 jobs:
   backtest:
