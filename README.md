@@ -7,12 +7,16 @@ hava durumu verisini birleştirip eğitim seti üreten bir veri pipeline'ı.
 ## İçerik
 
 - `ges_uretim_tahmini.py` — fiziksel baz model + Random Forest residual
-  düzeltmesiyle çalışan hibrit üretim tahmin modeli.
+  düzeltmesiyle çalışan hibrit üretim tahmin modeli. Santral geometrisi
+  (`tilt_deg`/`tracker_type`) `plants.yaml`'da tanımlıysa DNI/DHI'den
+  plane-of-array (POA) ışınımı ve NOCT tabanlı gerçek hücre sıcaklığı
+  hesaplar (bkz. aşağıdaki "Panel geometrisi" bölümü); tanımlı değilse eski
+  düz-GHI davranışına döner.
 - `epias.py` — EPİAŞ Transparency Platform client'ı: `get_tgt` (login) ve
   `fetch_generation_range` (saatlik üretim verisi).
 - `weather.py` — Open-Meteo historical weather API client'ı:
-  `fetch_weather_range` (saatlik GHI, sıcaklık, bulut kapanımı; API key
-  gerektirmez).
+  `fetch_weather_range` (saatlik GHI, DNI, DHI, sıcaklık, bulut kapanımı;
+  API key gerektirmez).
 - `merge.py` — `build_training_dataset`: üretim ve hava verisini timestamp
   üzerinden inner join ile birleştirir.
 - `shared.py` — HTTP çağrıları için ortak retry/backoff yardımcı fonksiyonu.
@@ -53,6 +57,33 @@ girdi daha eklemek yeterli:
 
 `--plant-id` değeri `plants.yaml`'da yoksa `main.py` net bir hata verip
 çıkar (yanlış/eksik konumla sessizce çalışmaz).
+
+### Panel geometrisi (opsiyonel, daha isabetli fiziksel model için)
+
+Aşağıdaki alanlar opsiyoneldir; bilinmiyorsa **eklemeyin/`null` bırakın** -
+uydurma değer girmeyin, kod bu durumda otomatik olarak düz-GHI (horizontal)
+baz modele döner:
+
+```yaml
+2579:
+  name: "Karapınar GES"
+  lat: 39.9
+  lon: 32.8
+  capacity_mw: 10.0
+  dc_capacity_mw: 13.5        # panel (DC) nameplate kapasitesi, sadece bilgi amaçlı
+  tilt_deg: 25.0               # panel eğim açısı, derece (0=yatay)
+  azimuth_deg: 0.0             # panelin baktığı yön (Güney=0, Batı=+90, Doğu=-90)
+  tracker_type: null           # null | "single_axis_horizontal"
+  module_noct_c: 45.0          # datasheet NOCT değeri (yoksa varsayılan 45.0)
+```
+
+`tilt_deg` veya `tracker_type` verilirse `train.py`/`evaluate.py`/
+`predict.py`/`report.py`/`backtest_forecast.py` DNI/DHI'den plane-of-array
+(POA) ışınımı hesaplayıp kullanır (izotropik gökyüzü modeli); DNI/DHI
+eksikse (örn. bu alanlar eklenmeden önce çekilmiş eski `data/` CSV'leri)
+GHI'den Erbs ayrıştırmasıyla tahmin edilir. `tracker_type:
+"single_axis_horizontal"` sadece en yaygın konfigürasyonu (yatay,
+Kuzey-Güney eksenli tek-eksen tracker) destekler.
 
 ## `main.py` kullanımı
 

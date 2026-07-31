@@ -19,6 +19,7 @@ def _fake_bundle():
         "hour": [10], "day_of_year": [200], "month": [7], "temp_c": [20.0],
         "ghi_forecast": [500.0], "cloud_cover": [0.2], "hour_sin": [0.0], "hour_cos": [0.0],
         "doy_sin": [0.0], "doy_cos": [0.0], "is_afternoon": [0], "ghi_x_afternoon": [0.0],
+        "solar_elevation_deg": [45.0], "clear_sky_index": [0.8], "ghi_ramp_1h": [0.0],
     })
     model.fit(X, [1.0])
     return {
@@ -85,7 +86,8 @@ def test_main_empty_forecast_fails_cleanly(tmp_path, monkeypatch):
     model_dir.mkdir(parents=True)
     joblib.dump(_fake_bundle(), model_dir / "model.joblib")
 
-    with patch("predict.fetch_weather_forecast", return_value=pd.DataFrame(columns=["timestamp", "ghi_forecast", "temp_c", "cloud_cover"])):
+    empty_df = pd.DataFrame(columns=["timestamp", "ghi_forecast", "dni_forecast", "dhi_forecast", "temp_c", "cloud_cover"])
+    with patch("predict.fetch_weather_forecast", return_value=empty_df):
         rc = predict.main([
             "--plant-id", "2579", "--start", "2026-07-22", "--end", "2026-07-22",
             "--output", "predictions/out.csv",

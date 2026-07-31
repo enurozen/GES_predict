@@ -3,6 +3,19 @@
 #
 # Yeni bir santral eklemek için buraya bir girdi daha ekleyin, plants.py
 # veya main.py'da başka bir değişiklik gerekmez.
+#
+# Opsiyonel panel-geometrisi alanları (ges_uretim_tahmini.py):
+#   dc_capacity_mw    : panel (DC) nameplate kapasitesi - opsiyonel, sadece
+#                       bilgi amaçlı (fiziksel model ac_capacity_mw'yi
+#                       kalibrasyondan zaten tahmin ediyor)
+#   tilt_deg          : panel eğim açısı, derece (0=yatay)
+#   azimuth_deg       : panelin baktığı yön, derece (Güney=0, Batı=+90, Doğu=-90)
+#   tracker_type      : null (sabit/bilinmiyor) | "single_axis_horizontal"
+#   module_noct_c     : datasheet NOCT değeri (yoksa varsayılan 45.0 kullanılır)
+#
+# tilt_deg/azimuth_deg/tracker_type BİLİNMİYORSA null bırakın - kod bu
+# durumda otomatik olarak düz-GHI (horizontal) baz modele döner. Bilinmeyen
+# bir santral için bu alanlara UYDURMA değer girmeyin.
 
 2579:
   name: "Kalyon Karapınar YEKA-1 GES"
@@ -15,3 +28,10 @@
   # 1350 MWp - inverter clipping'in nedeni bu fark (DC>AC), fiziksel modelin
   # ac_capacity_mw kalibrasyonu bunu ayrıca tahmin ediyor zaten.
   capacity_mw: 1000.0
+  dc_capacity_mw: 1350.0
+  # Panel tilt/azimuth ve tracker tipi datasheet'ten doğrulanmadı - bilerek
+  # null bırakıldı. Kod bu yüzden düz-GHI baz modele dönüyor (bkz. yukarıdaki
+  # not); gerçek değerler öğrenilirse buraya eklenip POA modeli devreye girer.
+  tilt_deg: null
+  azimuth_deg: null
+  tracker_type: null

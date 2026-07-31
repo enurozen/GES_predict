@@ -2,9 +2,12 @@
 Open-Meteo weather API client: historical (archive) data for training, and
 forecast data for future dates.
 
-Fetches hourly shortwave radiation (GHI), temperature, and cloud cover for a
-given location and date range, for use as input features to the GES
-production model in ges_uretim_tahmini.py (ghi_forecast, temp_c, cloud_cover).
+Fetches hourly shortwave radiation (GHI), direct normal irradiance (DNI),
+diffuse radiation (DHI), temperature, and cloud cover for a given location
+and date range, for use as input features to the GES production model in
+ges_uretim_tahmini.py. DNI/DHI let the model compute plane-of-array (POA)
+irradiance for tilted/tracked panels instead of assuming a flat horizontal
+surface (see ges_uretim_tahmini.poa_irradiance).
 
 No API key required:
     https://archive-api.open-meteo.com/v1/archive             (past dates, actual/reanalysis)
@@ -25,7 +28,10 @@ HISTORICAL_FORECAST_URL = "https://historical-forecast-api.open-meteo.com/v1/for
 
 REQUEST_TIMEOUT = 15
 
-HOURLY_VARIABLES = "shortwave_radiation,temperature_2m,cloudcover"
+HOURLY_VARIABLES = (
+    "shortwave_radiation,direct_normal_irradiance,diffuse_radiation,"
+    "temperature_2m,cloudcover"
+)
 
 
 def _fetch_hourly(url: str, lat: float, lon: float, start: date, end: date) -> pd.DataFrame:
@@ -62,6 +68,8 @@ def _fetch_hourly(url: str, lat: float, lon: float, start: date, end: date) -> p
         {
             "timestamp": pd.to_datetime(hourly.get("time", [])),
             "ghi_forecast": hourly.get("shortwave_radiation", []),
+            "dni_forecast": hourly.get("direct_normal_irradiance", []),
+            "dhi_forecast": hourly.get("diffuse_radiation", []),
             "temp_c": hourly.get("temperature_2m", []),
             "cloud_cover": [
                 v / 100.0 if v is not None else None for v in cloud_cover_pct
@@ -75,7 +83,9 @@ def fetch_weather_range(lat: float, lon: float, start: date, end: date) -> pd.Da
 
     Returns a DataFrame with columns:
         timestamp    : datetime
-        ghi_forecast : shortwave (global horizontal) radiation, W/m^2
+        ghi_forecast : global horizontal irradiance, W/m^2
+        dni_forecast : direct normal irradiance, W/m^2
+        dhi_forecast : diffuse horizontal irradiance, W/m^2
         temp_c       : ambient temperature, °C
         cloud_cover  : cloud cover fraction, 0-1 (Open-Meteo returns %, normalized here)
     """

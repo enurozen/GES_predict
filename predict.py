@@ -17,6 +17,7 @@ from pathlib import Path
 import joblib
 
 from ges_uretim_tahmini import predict_production
+from plants import geometry_kwargs
 from shared import ApiError
 from weather import fetch_weather_forecast
 
@@ -71,6 +72,7 @@ def main(argv: list[str] | None = None) -> int:
             weather_df, lat, lon, capacity_mw, model,
             temp_coeff=calibration["temp_coeff"], efficiency_scale=calibration["efficiency_scale"],
             ac_capacity_mw=calibration["ac_capacity_mw"],
+            **geometry_kwargs(plant),
         )
     except ApiError as exc:
         logger.error("%s", exc)

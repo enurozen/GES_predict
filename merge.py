@@ -9,7 +9,10 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-OUTPUT_COLUMNS = ["timestamp", "ghi_forecast", "temp_c", "cloud_cover", "production_mwh"]
+OUTPUT_COLUMNS = [
+    "timestamp", "ghi_forecast", "dni_forecast", "dhi_forecast",
+    "temp_c", "cloud_cover", "production_mwh",
+]
 
 
 def build_training_dataset(generation_df: pd.DataFrame, weather_df: pd.DataFrame) -> pd.DataFrame:
@@ -40,7 +43,7 @@ def build_training_dataset(generation_df: pd.DataFrame, weather_df: pd.DataFrame
         gen = gen[~bad_rows]
 
     merged = gen[["timestamp", "production_mwh"]].merge(
-        weather_df[["timestamp", "ghi_forecast", "temp_c", "cloud_cover"]],
+        weather_df[["timestamp", "ghi_forecast", "dni_forecast", "dhi_forecast", "temp_c", "cloud_cover"]],
         on="timestamp",
         how="inner",
     )

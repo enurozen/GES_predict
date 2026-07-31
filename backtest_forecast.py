@@ -23,7 +23,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from ges_uretim_tahmini import build_physical_baseline, calibrate_site_parameters, predict_production, train_residual_model
 from evaluate import hit_rate, normalized_mae
-from plants import PlantNotFoundError, load_plant
+from plants import PlantNotFoundError, geometry_kwargs, load_plant
 from shared import ApiError
 from train import load_training_data, split_train_test
 from weather import fetch_historical_forecast
@@ -66,14 +66,15 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     lat, lon, capacity_mw = plant["lat"], plant["lon"], plant["capacity_mw"]
+    geometry = geometry_kwargs(plant)
 
     # Kalibrasyon ve model sadece train_df'ten - test setine sızmasın.
-    calibration = calibrate_site_parameters(train_df, lat, lon, capacity_mw)
+    calibration = calibrate_site_parameters(train_df, lat, lon, capacity_mw, **geometry)
     temp_coeff, efficiency_scale = calibration["temp_coeff"], calibration["efficiency_scale"]
     ac_capacity_mw = calibration["ac_capacity_mw"]
 
-    baseline_train = build_physical_baseline(train_df, lat, lon, capacity_mw, temp_coeff, efficiency_scale)
-    model = train_residual_model(train_df, baseline_train)
+    baseline_train = build_physical_baseline(train_df, lat, lon, capacity_mw, temp_coeff, efficiency_scale, **geometry)
+    model = train_residual_model(train_df, baseline_train, lat, lon)
 
     # Test penceresi icin GERCEK arsivlenmis FORECAST hava verisi (archive-api
     # DEGIL - o gercekten ne oldugunu soyler, biz o gun gercekte ne tahmin
@@ -102,18 +103,20 @@ def main(argv: list[str] | None = None) -> int:
 
     actual = aligned["production_mwh"]
 
-    baseline_forecast = build_physical_baseline(aligned, lat, lon, capacity_mw, temp_coeff, efficiency_scale)
+    baseline_forecast = build_physical_baseline(aligned, lat, lon, capacity_mw, temp_coeff, efficiency_scale, **geometry)
     hybrid_forecast = predict_production(
         aligned, lat, lon, capacity_mw, model,
         temp_coeff=temp_coeff, efficiency_scale=efficiency_scale, ac_capacity_mw=ac_capacity_mw,
+        **geometry,
     )
 
     # Karsilastirma icin: ayni test penceresi, ama "mukemmel hava bilgisi"
     # varsayimiyla (evaluate.py'nin yaptigi gibi archive-api / gercek hava).
-    baseline_hindsight = build_physical_baseline(test_df, lat, lon, capacity_mw, temp_coeff, efficiency_scale)
+    baseline_hindsight = build_physical_baseline(test_df, lat, lon, capacity_mw, temp_coeff, efficiency_scale, **geometry)
     hybrid_hindsight = predict_production(
         test_df, lat, lon, capacity_mw, model,
         temp_coeff=temp_coeff, efficiency_scale=efficiency_scale, ac_capacity_mw=ac_capacity_mw,
+        **geometry,
     )
     actual_hindsight = test_df["production_mwh"]
 
