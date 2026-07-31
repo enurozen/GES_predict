@@ -47,6 +47,11 @@ jobs:
             --plant-id "$PLANT_ID" \
             --test-days "$TEST_DAYS" \
             2>&1 | tee backtest_output.txt
+          python backtest_forecast.py \
+            --plant-id "$PLANT_ID" \
+            --test-days "$TEST_DAYS" \
+            --tolerance-pct 1 \
+            2>&1 | tee -a backtest_output.txt
 
       - name: Write job summary
         if: always()
