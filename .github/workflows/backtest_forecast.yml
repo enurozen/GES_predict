@@ -39,17 +39,23 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run forecast-based backtest
+        env:
+          PLANT_ID: "${{ inputs.plant_id || '2579' }}"
+          TEST_DAYS: "${{ inputs.test_days || '14' }}"
         run: |
           python backtest_forecast.py \
-            --plant-id "${{ inputs.plant_id }}" \
-            --test-days "${{ inputs.test_days }}" \
+            --plant-id "$PLANT_ID" \
+            --test-days "$TEST_DAYS" \
             2>&1 | tee backtest_output.txt
 
       - name: Write job summary
         if: always()
+        env:
+          PLANT_ID: "${{ inputs.plant_id || '2579' }}"
+          TEST_DAYS: "${{ inputs.test_days || '14' }}"
         run: |
           {
-            echo "## Backtest sonuçları (plant ${{ inputs.plant_id }}, son ${{ inputs.test_days }} gün)"
+            echo "## Backtest sonuçları (plant $PLANT_ID, son $TEST_DAYS gün)"
             echo '```'
             cat backtest_output.txt
             echo '```'
