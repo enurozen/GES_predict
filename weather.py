@@ -7,8 +7,9 @@ given location and date range, for use as input features to the GES
 production model in ges_uretim_tahmini.py (ghi_forecast, temp_c, cloud_cover).
 
 No API key required:
-    https://archive-api.open-meteo.com/v1/archive  (past dates)
-    https://api.open-meteo.com/v1/forecast          (today + up to ~16 days ahead)
+    https://archive-api.open-meteo.com/v1/archive             (past dates, actual/reanalysis)
+    https://api.open-meteo.com/v1/forecast                     (today + up to ~16 days ahead)
+    https://historical-forecast-api.open-meteo.com/v1/forecast (archived past FORECASTS, for honest backtesting)
 """
 
 from datetime import date
@@ -20,6 +21,7 @@ from shared import ApiError, request_with_retries
 
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+HISTORICAL_FORECAST_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
 
 REQUEST_TIMEOUT = 15
 
@@ -88,3 +90,17 @@ def fetch_weather_forecast(lat: float, lon: float, start: date, end: date) -> pd
     in the past, use fetch_weather_range instead.
     """
     return _fetch_hourly(FORECAST_URL, lat, lon, start, end)
+
+
+def fetch_historical_forecast(lat: float, lon: float, start: date, end: date) -> pd.DataFrame:
+    """Fetch what the weather FORECAST actually said, for a past date range.
+
+    Same columns as fetch_weather_range, but the values come from Open-Meteo's
+    historical-forecast-api - archived model output as it was actually
+    produced at the time, not the after-the-fact reanalysis that
+    fetch_weather_range returns. This is the only honest way to backtest
+    predict.py: fetch_weather_range/archive-api tells you what the weather
+    WAS, not what a same-day forecast WOULD HAVE SAID, so evaluating against
+    it silently assumes a perfect weather forecast and overstates accuracy.
+    """
+    return _fetch_hourly(HISTORICAL_FORECAST_URL, lat, lon, start, end)
