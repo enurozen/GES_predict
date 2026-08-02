@@ -33,6 +33,20 @@ hava durumu verisini birleştirip eğitim seti üreten bir veri pipeline'ı.
   dönük toplu veri çekme workflow'u.
 - `data/<plant_id>/<tarih>.csv` — `daily_datapull.yml` ve `backfill.py`'ın
   ürettiği, santral bazında klasörlenmiş eğitim verisi.
+- `train_fleet.py` — birden fazla santralin verisini havuzlayıp TEK bir
+  residual model eğiten CLI; bugün tek santral kayıtlıysa da çalışır, ikinci
+  bir santral eklendiğinde otomatik devreye girer (bkz. aşağıdaki "Çoklu-
+  santral (fleet) eğitimi" bölümü).
+- `imbalance_cost.py` — EPİAŞ dengesizlik maliyetine duyarlı değerlendirme:
+  asimetrik ceza biliniyorsa optimal bid kantilini hesaplayan
+  `optimal_bid_quantile` (saf matematik, veri gerektirmez) ve gerçek saatlik
+  dengesizlik fiyatıyla bir tahminin maliyetini hesaplayan `imbalance_cost`/
+  `evaluate_financial`.
+- `reforecast_check.py` — iki `predict.py` çalıştırmasını (gün-öncesi bid
+  vs. daha sonra üretilen "refresh" tahmin) karşılaştırıp sapma
+  belirlenen bir eşiği aşan saatleri işaretler; gün-içi piyasasında pozisyon
+  düzeltmesi değerlendirilmesi için insan karar vericiye sinyal — gerçek
+  emir gönderimi (trading) KAPSAM DIŞI, bilinçli olarak implement edilmedi.
 
 ## Kurulum
 
@@ -84,6 +98,72 @@ eksikse (örn. bu alanlar eklenmeden önce çekilmiş eski `data/` CSV'leri)
 GHI'den Erbs ayrıştırmasıyla tahmin edilir. `tracker_type:
 "single_axis_horizontal"` sadece en yaygın konfigürasyonu (yatay,
 Kuzey-Güney eksenli tek-eksen tracker) destekler.
+
+### Ensemble hava kaynağı
+
+```bash
+python predict.py --plant-id 2579 --start 2026-07-22 --end 2026-07-24 \
+  --model models/2579/model.joblib --output predictions/2579.csv --ensemble
+```
+
+`--ensemble`, Open-Meteo'nun `models` parametresiyle aynı anda birden fazla
+NWP modelinden (varsayılan: ECMWF, GFS, ICON) tahmin çekip ORTALAMASINI
+kullanır (`weather.fetch_weather_forecast_ensemble`) - tek modele bağımlı
+kalmaktan kaynaklanan sistematik hatayı azaltır, ek kimlik bilgisi/ücret
+gerektirmez.
+
+### Çoklu-santral (fleet) eğitimi
+
+```bash
+python train_fleet.py --plant-ids 2579,1234 --output models/fleet/model.joblib
+```
+
+`train.py`'ın tek-santral eğitimine alternatif: `build_features`'ın ürettiği
+özellikler (clear_sky_index, solar_elevation_deg) kapasiteden/coğrafyadan
+bağımsız olduğu için, birden fazla santralin verisi TEK bir residual modelde
+havuzlanabilir - özellikle az geçmiş verisi olan yeni bir santral için daha
+kararlı bir model. Fiziksel kalibrasyon (`efficiency_scale`/`temp_coeff`)
+santrale özgü kalır, sadece ML katmanı havuzlanır. Bugün tek santral
+kayıtlıysa da çalışır ("fleet of one"); ikinci bir `plant_id` eklendiğinde
+kod değişikliği gerekmeden pooling devreye girer. Tahmin tarafı için bkz.
+`ges_uretim_tahmini.predict_production_from_fleet` (henüz `predict.py`'a
+bağlanmadı - farklı bundle formatı, ayrı bir CLI gerektirir).
+
+### Dengesizlik-maliyet duyarlı değerlendirme
+
+`imbalance_cost.py`, `evaluate.py`'nin simetrik MAE/RMSE'sinden farklı
+olarak EPİAŞ dengesizlik cezasının asimetrik olabileceğini hesaba katar:
+
+- `optimal_bid_quantile(cost_under_mwh, cost_over_mwh)` — saf matematik,
+  veri gerektirmez, bugün kullanılabilir: taahhüdün altında/üstünde
+  kalmanın maliyeti farklıysa, medyan tahmin yerine hangi kantilin
+  bidlenmesi gerektiğini hesaplar (newsvendor çözümü).
+- `imbalance_cost`/`evaluate_financial` — gerçek saatlik dengesizlik
+  fiyatıyla bir tahmin serisinin gerçek maliyetini hesaplar. Bu fiyat verisi
+  `epias.fetch_imbalance_price_for_date` (Sistem Marjinal Fiyatı, madde
+  5.113) ve `epias.fetch_imbalance_amount_for_date` (Dengesizlik Tutarı,
+  madde 5.183) üzerinden geliyor - URL/HTTP method/TGT auth EPİAŞ Şeffaflık
+  Platformu API dokümantasyonundan **teyit edildi**. Tek eksik: response
+  DTO'sunun (`SystemMarginalPriceResponseDto`/`ImbalanceAmountResponseDto`)
+  tam alan adları dokümanda listelenmiyor, bu yüzden fonksiyonlar birkaç
+  olası isimi dener (`epias.py`'deki `_PRICE_FIELD_CANDIDATES` vb.); ilk
+  gerçek çağrıda alan adları tutmazsa sessizce yanlış sonuç üretmek yerine
+  gerçek alanları gösteren net bir hata fırlatır - o hatadaki isimlerle
+  candidate listesini güncellemek tek satırlık bir düzeltme.
+
+### Gün-içi piyasası yeniden-tahmin kontrolü
+
+```bash
+python reforecast_check.py --day-ahead predictions/day_ahead.csv \
+  --refresh predictions/refresh.csv --capacity-mw 1000 --tolerance-pct 3
+```
+
+`predict.py`'yi iki farklı zamanda (gün-öncesi kapanışında ve daha sonra,
+daha güncel hava tahminiyle) çalıştırıp çıktıları karşılaştırır, sapması
+`--tolerance-pct`'i aşan saatleri işaretler - gün-içi piyasasında pozisyon
+düzeltmesi değerlendirilmesi için bir sinyal. **Gerçek emir gönderimi
+(trading) kapsam dışı ve bilinçli olarak implement edilmedi** - EPİAŞ
+üye/trading API entegrasyonu ve önemli bir finansal risk gerektirir.
 
 ## `main.py` kullanımı
 
