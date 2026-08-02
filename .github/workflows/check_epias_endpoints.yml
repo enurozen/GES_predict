@@ -1,0 +1,49 @@
+name: Check EPİAŞ SMF/Imbalance Endpoints
+
+# One-off diagnostic: confirms the real field names in EPİAŞ's SMF/imbalance
+# amount responses (URL/method/auth already confirmed against the API docs,
+# only the response DTO field names need a live check). See
+# check_epias_endpoints.py and epias.py's _PRICE_FIELD_CANDIDATES etc.
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Date to check (YYYY-MM-DD), leave empty for yesterday"
+        required: false
+        default: ""
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run endpoint check
+        env:
+          EPIAS_USERNAME: ${{ secrets.EPIAS_USERNAME }}
+          EPIAS_PASSWORD: ${{ secrets.EPIAS_PASSWORD }}
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            python check_epias_endpoints.py --date "${{ inputs.date }}" 2>&1 | tee check_output.txt
+          else
+            python check_epias_endpoints.py 2>&1 | tee check_output.txt
+          fi
+
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            echo "## EPİAŞ endpoint kontrolü"
+            echo '```'
+            cat check_output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

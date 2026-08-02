@@ -21,24 +21,24 @@ GENERATION_URL = (
 )
 
 # Sistem Marjinal Fiyatı (SMF) - Şeffaflık Platformu API dokümantasyonu
-# madde 5.113. URL/HTTP method/TGT auth/tarih formatı (ISO-8601) TEYİT
-# EDİLDİ; SystemMarginalPriceResponseDto'nun tam alan adları dokümanda
-# listelenmediği için _PRICE_FIELD_CANDIDATES ile tahmin ediliyor (bkz. aşağı).
+# madde 5.113. URL/HTTP method/TGT auth/tarih formatı (ISO-8601) VE response
+# alan adları CANLI ÇAĞRIYLA DOĞRULANDI (2026-08-02, check_epias_endpoints.py
+# ile): {"date": "...", "hour": "...", "systemMarginalPrice": <float>}.
 SMF_URL = "https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/system-marginal-price"
 
-# Dengesizlik Tutarı - madde 5.183. Aynı doğrulama durumu: URL/method/auth
-# teyit edildi, ImbalanceAmountResponseDto alan adları tahmin ediliyor.
+# Dengesizlik Tutarı - madde 5.183. URL/method/auth teyit edildi, ANCAK canlı
+# çağrı (check_epias_endpoints.py, 2026-08-02, iki farklı tarih) her ikisinde
+# de 0 satır döndü - SMF'nin aksine muhtemelen sadece startDate/endDate
+# yetmiyor, ek bir zorunlu parametre (ör. organizationId/UEVÇB kodu) eksik
+# olabilir; santral/organizasyon bazlı bir veri olması, SMF gibi sistem geneli
+# olmaması muhtemel. ImbalanceAmountResponseDto alan adları da HALA tahmin.
 IMBALANCE_AMOUNT_URL = "https://seffaflik.epias.com.tr/electricity-service/v1/markets/imbalance/data/imbalance-amount"
 
-# SystemMarginalPriceResponseDto/ImbalanceAmountResponseDto'nun tam alan
-# adları EPİAŞ'ın API-index dokümanında listelenmiyor (sadece endpoint/
-# method/DTO adı doğrulandı, bkz. yukarısı) - bu yüzden fetch fonksiyonları
-# birkaç olası alan adını dener. Hiçbiri tutmazsa (_first_matching_field)
-# sessizce yanlış/boş sonuç üretmek yerine gerçek response'taki alan
-# adlarını gösteren net bir EpiasError fırlatılır; o hatadaki gerçek
-# adlarla bu üç listeyi güncellemek yeterli, fonksiyonların geri kalanı
-# değişmeden kalır.
-_PRICE_FIELD_CANDIDATES = ["price", "systemMarginalPrice", "smp", "smpValue", "value"]
+# SMF alan adları yukarıda doğrulandı (systemMarginalPrice ilk denemede
+# tuttu). ImbalanceAmountResponseDto'nunkiler hâlâ tahmin - hiçbiri tutmazsa
+# (_first_matching_field) sessizce yanlış/boş sonuç üretmek yerine gerçek
+# response'taki alan adlarını gösteren net bir EpiasError fırlatılır.
+_PRICE_FIELD_CANDIDATES = ["systemMarginalPrice", "price", "smp", "smpValue", "value"]
 _AMOUNT_FIELD_CANDIDATES = ["imbalanceAmount", "amount", "netAmount", "value"]
 _DATE_FIELD_CANDIDATES = ["date", "time", "hour"]
 
@@ -192,6 +192,13 @@ def fetch_imbalance_amount_for_date(tgt: str, day: date) -> list[dict[str, Any]]
     Bir günün saatlik Dengesizlik Tutarı verisini çeker (madde 5.183 -
     URL/method/auth teyit edildi, response alan adları
     _AMOUNT_FIELD_CANDIDATES ile tahmin ediliyor, bkz. yukarısı).
+
+    BİLİNEN DURUM: canlı çağrıda (2026-08-02, iki farklı tarih) her ikisinde
+    de 0 satır döndü - startDate/endDate dışında bir zorunlu parametre (ör.
+    organizationId/UEVÇB kodu) eksik olabilir. SMF'nin aksine bu endpoint
+    henüz uçtan uca doğrulanmadı; boş dönüş bir hata değil ama beklenen bir
+    sonuç da değil - imbalance_cost.py'de kullanmadan önce EPİAŞ Şeffaflık
+    Platformu'ndan gerekli ek parametreyi teyit edin.
     """
     rows = _fetch_market_data_for_date(tgt, IMBALANCE_AMOUNT_URL, day, "imbalance amount")
     if rows:
