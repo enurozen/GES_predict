@@ -80,7 +80,7 @@ def test_flat_panel_cos_aoi_matches_cos_zenith_regardless_of_azimuth():
     # DNI alone should equal DNI * cos(zenith) for ANY panel azimuth.
     zenith_deg = 30.0
     for panel_az in [-90.0, 0.0, 90.0, 180.0]:
-        cos_aoi = g._cos_aoi_fixed_tilt(zenith_deg, sun_azimuth_deg := 45.0, tilt_deg=0.0,
+        cos_aoi = g._cos_aoi_fixed_tilt(zenith_deg, 45.0, tilt_deg=0.0,
                                          panel_azimuth_deg=panel_az)
         assert cos_aoi == pytest.approx(np.cos(np.radians(zenith_deg)), abs=1e-9)
 
@@ -208,3 +208,55 @@ def test_build_features_includes_new_generalizable_columns():
     # Ramp is the diff from the previous row; first row has no predecessor.
     assert feats["ghi_ramp_1h"].iloc[0] == pytest.approx(0.0)
     assert feats["ghi_ramp_1h"].iloc[1] == pytest.approx(700.0)
+
+
+# --------------------------------------------------------------------------
+# predict_production_from_fleet: train_fleet.py's capacity-normalized
+# bundle format (residual is a fraction of capacity_mw, not raw MWh)
+# --------------------------------------------------------------------------
+
+class _StubFleetModel:
+    """Returns a fixed per-row normalized residual (fraction of capacity_mw),
+    standing in for a fitted RandomForestRegressor without the fit cost."""
+
+    def __init__(self, residual_normalized):
+        self.residual_normalized = residual_normalized
+
+    def predict(self, X):
+        return np.full(len(X), self.residual_normalized)
+
+
+def test_predict_production_from_fleet_scales_residual_by_capacity():
+    df = _sample_df()
+    capacity_mw = 100.0
+    residual_normalized = 0.01  # 1% of capacity
+    model = _StubFleetModel(residual_normalized)
+
+    baseline = g.build_physical_baseline(df, LAT, LON, capacity_mw=capacity_mw)
+    prediction = g.predict_production_from_fleet(df, LAT, LON, capacity_mw, model)
+
+    # final = baseline + residual_normalized * capacity_mw, clipped to [0, capacity_mw]
+    expected = (baseline + residual_normalized * capacity_mw).clip(lower=0, upper=capacity_mw)
+    pd.testing.assert_series_equal(prediction, expected)
+
+
+def test_predict_production_from_fleet_clips_to_ac_capacity():
+    df = _sample_df()
+    capacity_mw = 100.0
+    # Large positive residual should be clipped at the AC ceiling, not capacity_mw.
+    model = _StubFleetModel(residual_normalized=10.0)
+
+    prediction = g.predict_production_from_fleet(
+        df, LAT, LON, capacity_mw, model, ac_capacity_mw=50.0,
+    )
+
+    assert prediction.max() <= 50.0
+
+
+def test_predict_production_from_fleet_never_negative():
+    df = _sample_df()
+    model = _StubFleetModel(residual_normalized=-10.0)  # implausibly large negative residual
+
+    prediction = g.predict_production_from_fleet(df, LAT, LON, capacity_mw=100.0, fleet_model=model)
+
+    assert (prediction >= 0).all()
