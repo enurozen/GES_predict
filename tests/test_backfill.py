@@ -26,6 +26,8 @@ def _weather_df(days: list[str]) -> pd.DataFrame:
         {
             "timestamp": pd.to_datetime([f"{d} 00:00" for d in days]),
             "ghi_forecast": [0.0] * len(days),
+            "dni_forecast": [0.0] * len(days),
+            "dhi_forecast": [0.0] * len(days),
             "temp_c": [18.0] * len(days),
             "cloud_cover": [0.5] * len(days),
         }

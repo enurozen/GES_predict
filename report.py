@@ -21,7 +21,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from evaluate import hit_rate, normalized_mae
 from ges_uretim_tahmini import build_physical_baseline, calibrate_site_parameters, predict_production, train_residual_model
-from plants import PlantNotFoundError, load_plant
+from plants import PlantNotFoundError, geometry_kwargs, load_plant
 from train import load_training_data, split_train_test
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -61,17 +61,19 @@ def main(argv: list[str] | None = None) -> int:
     train_df, test_df = split_train_test(df, test_days=args.test_days, test_fraction=args.test_fraction)
 
     lat, lon, capacity_mw = plant["lat"], plant["lon"], plant["capacity_mw"]
-    calibration = calibrate_site_parameters(train_df, lat, lon, capacity_mw)
+    geometry = geometry_kwargs(plant)
+    calibration = calibrate_site_parameters(train_df, lat, lon, capacity_mw, **geometry)
     temp_coeff, efficiency_scale = calibration["temp_coeff"], calibration["efficiency_scale"]
     ac_capacity_mw = calibration["ac_capacity_mw"]
 
-    baseline_train = build_physical_baseline(train_df, lat, lon, capacity_mw, temp_coeff, efficiency_scale)
-    model = train_residual_model(train_df, baseline_train)
+    baseline_train = build_physical_baseline(train_df, lat, lon, capacity_mw, temp_coeff, efficiency_scale, **geometry)
+    model = train_residual_model(train_df, baseline_train, lat, lon)
 
-    baseline_test = build_physical_baseline(test_df, lat, lon, capacity_mw, temp_coeff, efficiency_scale)
+    baseline_test = build_physical_baseline(test_df, lat, lon, capacity_mw, temp_coeff, efficiency_scale, **geometry)
     hybrid_test = predict_production(
         test_df, lat, lon, capacity_mw, model,
         temp_coeff=temp_coeff, efficiency_scale=efficiency_scale, ac_capacity_mw=ac_capacity_mw,
+        **geometry,
     )
 
     actual = test_df["production_mwh"]

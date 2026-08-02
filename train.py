@@ -19,7 +19,7 @@ import joblib
 import pandas as pd
 
 from ges_uretim_tahmini import build_physical_baseline, calibrate_site_parameters, train_residual_model
-from plants import PlantNotFoundError, load_plant
+from plants import PlantNotFoundError, geometry_kwargs, load_plant
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -88,7 +88,8 @@ def main(argv: list[str] | None = None) -> int:
 
     logger.info("Loaded %d rows for %s (%s to %s)", len(df), plant["name"], df["timestamp"].min(), df["timestamp"].max())
 
-    calibration = calibrate_site_parameters(df, plant["lat"], plant["lon"], plant["capacity_mw"])
+    geometry = geometry_kwargs(plant)
+    calibration = calibrate_site_parameters(df, plant["lat"], plant["lon"], plant["capacity_mw"], **geometry)
     logger.info(
         "Kalibrasyon: efficiency_scale=%.4f, temp_coeff=%.5f, ac_capacity_mw=%.1f (%d gündüz örneği)",
         calibration["efficiency_scale"], calibration["temp_coeff"],
@@ -98,8 +99,9 @@ def main(argv: list[str] | None = None) -> int:
     baseline = build_physical_baseline(
         df, plant["lat"], plant["lon"], plant["capacity_mw"],
         temp_coeff=calibration["temp_coeff"], efficiency_scale=calibration["efficiency_scale"],
+        **geometry,
     )
-    model = train_residual_model(df, baseline)
+    model = train_residual_model(df, baseline, plant["lat"], plant["lon"])
 
     bundle = {"model": model, "calibration": calibration, "plant": plant}
     output_path = Path(args.output)

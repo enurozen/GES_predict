@@ -26,6 +26,8 @@ def _sample_body():
         "hourly": {
             "time": ["2026-07-01T00:00", "2026-07-01T01:00"],
             "shortwave_radiation": [0.0, 120.5],
+            "direct_normal_irradiance": [0.0, 300.2],
+            "diffuse_radiation": [0.0, 45.1],
             "temperature_2m": [18.2, 18.9],
             "cloudcover": [80, 40],
         }
@@ -41,8 +43,12 @@ def test_fetch_weather_range_success():
     with patch("shared.requests.request", return_value=resp) as mock_request:
         df = weather.fetch_weather_range(39.9, 32.8, date(2026, 7, 1), date(2026, 7, 1))
 
-    assert list(df.columns) == ["timestamp", "ghi_forecast", "temp_c", "cloud_cover"]
+    assert list(df.columns) == [
+        "timestamp", "ghi_forecast", "dni_forecast", "dhi_forecast", "temp_c", "cloud_cover",
+    ]
     assert list(df["ghi_forecast"]) == [0.0, 120.5]
+    assert list(df["dni_forecast"]) == [0.0, 300.2]
+    assert list(df["dhi_forecast"]) == [0.0, 45.1]
     assert list(df["temp_c"]) == [18.2, 18.9]
     assert list(df["cloud_cover"]) == [0.8, 0.4]
 

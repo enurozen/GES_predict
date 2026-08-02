@@ -25,6 +25,8 @@ def _weather_df() -> pd.DataFrame:
                 ["2026-07-01 00:00", "2026-07-01 01:00", "2026-07-01 03:00"]
             ),
             "ghi_forecast": [0.0, 50.0, 200.0],
+            "dni_forecast": [0.0, 120.0, 600.0],
+            "dhi_forecast": [0.0, 40.0, 90.0],
             "temp_c": [18.0, 18.5, 20.0],
             "cloud_cover": [0.9, 0.7, 0.1],
         }
@@ -37,6 +39,8 @@ def test_build_training_dataset_inner_joins_on_timestamp():
     assert list(df.columns) == [
         "timestamp",
         "ghi_forecast",
+        "dni_forecast",
+        "dhi_forecast",
         "temp_c",
         "cloud_cover",
         "production_mwh",
@@ -79,6 +83,8 @@ def test_build_training_dataset_no_overlap_returns_empty():
     assert list(df.columns) == [
         "timestamp",
         "ghi_forecast",
+        "dni_forecast",
+        "dhi_forecast",
         "temp_c",
         "cloud_cover",
         "production_mwh",

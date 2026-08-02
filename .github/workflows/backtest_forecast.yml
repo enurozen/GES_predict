@@ -1,0 +1,61 @@
+name: Backtest Day-Ahead Forecast Accuracy
+
+# Manual only: scores the hybrid model against REAL archived forecast
+# weather (not after-the-fact reanalysis) for the most recent N days, to
+# answer "how accurate is predict.py actually, once weather forecast error
+# is included?" No EPİAŞ credentials needed - only reads existing data/
+# CSVs and calls Open-Meteo.
+on:
+  workflow_dispatch:
+    inputs:
+      plant_id:
+        description: "Plant ID (must exist in plants.yaml)"
+        required: false
+        default: "2579"
+      test_days:
+        description: "Most recent N days to hold out and score"
+        required: false
+        default: "14"
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run forecast-based backtest
+        env:
+          PLANT_ID: "${{ inputs.plant_id || '2579' }}"
+          TEST_DAYS: "${{ inputs.test_days || '14' }}"
+        run: |
+          python backtest_forecast.py \
+            --plant-id "$PLANT_ID" \
+            --test-days "$TEST_DAYS" \
+            2>&1 | tee backtest_output.txt
+          python backtest_forecast.py \
+            --plant-id "$PLANT_ID" \
+            --test-days "$TEST_DAYS" \
+            --tolerance-pct 1 \
+            2>&1 | tee -a backtest_output.txt
+
+      - name: Write job summary
+        if: always()
+        env:
+          PLANT_ID: "${{ inputs.plant_id || '2579' }}"
+          TEST_DAYS: "${{ inputs.test_days || '14' }}"
+        run: |
+          {
+            echo "## Backtest sonuçları (plant $PLANT_ID, son $TEST_DAYS gün)"
+            echo '```'
+            cat backtest_output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

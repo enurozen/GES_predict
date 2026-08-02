@@ -28,3 +28,22 @@ def load_plant(plant_id: int, registry_path: Path = REGISTRY_PATH) -> dict[str, 
             "Add an entry with lat/lon/capacity_mw before pulling its data."
         )
     return plant
+
+
+def geometry_kwargs(plant: dict[str, Any]) -> dict[str, Any]:
+    """
+    Extract the optional panel-geometry fields (tilt_deg, panel_azimuth_deg,
+    tracker_type, module_noct_c) from a plant registry entry, as kwargs ready
+    to pass to calibrate_site_parameters/build_physical_baseline/
+    predict_production/train_residual_model.
+
+    Missing fields default to None (unknown geometry -> flat-GHI fallback in
+    ges_uretim_tahmini.py), except module_noct_c which defaults to the
+    industry-typical 45°C when no datasheet NOCT is registered.
+    """
+    return {
+        "tilt_deg": plant.get("tilt_deg"),
+        "panel_azimuth_deg": plant.get("azimuth_deg"),
+        "tracker_type": plant.get("tracker_type"),
+        "module_noct_c": plant.get("module_noct_c", 45.0),
+    }
