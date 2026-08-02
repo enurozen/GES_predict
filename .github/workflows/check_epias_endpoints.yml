@@ -11,12 +11,6 @@ on:
         description: "Date to check (YYYY-MM-DD), leave empty for yesterday"
         required: false
         default: ""
-  # TEMP: workflow_dispatch only fires from the default branch until this
-  # workflow file is merged there, so a push trigger is added here to get
-  # one real run on this feature branch. Remove this push block on merge.
-  push:
-    branches:
-      - chore/check-epias-endpoints
 
 jobs:
   check:
