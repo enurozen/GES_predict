@@ -140,12 +140,16 @@ olarak EPİAŞ dengesizlik cezasının asimetrik olabileceğini hesaba katar:
   bidlenmesi gerektiğini hesaplar (newsvendor çözümü).
 - `imbalance_cost`/`evaluate_financial` — gerçek saatlik dengesizlik
   fiyatıyla bir tahmin serisinin gerçek maliyetini hesaplar. Bu fiyat verisi
-  **`epias.fetch_imbalance_price_for_date` üzerinden gelecek, ama o fonksiyon
-  şu an bir ŞABLON** - EPİAŞ Şeffaflık Platformu'ndaki SMF/dengesizlik fiyatı
-  endpoint'i resmi dokümantasyondan doğrulanmadığı için bilerek
-  `NotImplementedError` fırlatıyor (`epias.py`'deki yorum satırlarında
-  tamamlanması gereken gövde var). Endpoint doğrulanıp bu fonksiyon
-  tamamlanınca `imbalance_cost.py`'de hiçbir değişiklik gerekmez.
+  `epias.fetch_imbalance_price_for_date` (Sistem Marjinal Fiyatı, madde
+  5.113) ve `epias.fetch_imbalance_amount_for_date` (Dengesizlik Tutarı,
+  madde 5.183) üzerinden geliyor - URL/HTTP method/TGT auth EPİAŞ Şeffaflık
+  Platformu API dokümantasyonundan **teyit edildi**. Tek eksik: response
+  DTO'sunun (`SystemMarginalPriceResponseDto`/`ImbalanceAmountResponseDto`)
+  tam alan adları dokümanda listelenmiyor, bu yüzden fonksiyonlar birkaç
+  olası isimi dener (`epias.py`'deki `_PRICE_FIELD_CANDIDATES` vb.); ilk
+  gerçek çağrıda alan adları tutmazsa sessizce yanlış sonuç üretmek yerine
+  gerçek alanları gösteren net bir hata fırlatır - o hatadaki isimlerle
+  candidate listesini güncellemek tek satırlık bir düzeltme.
 
 ### Gün-içi piyasası yeniden-tahmin kontrolü
 

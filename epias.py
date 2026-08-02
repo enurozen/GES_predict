@@ -20,17 +20,27 @@ GENERATION_URL = (
     "realtime-generation-bulk"
 )
 
-# ŞABLON - Sistem Marjinal Fiyatı (SMF) / dengesizlik fiyatı için muhtemel
-# endpoint (Şeffaflık Platformu'nun genel electricity-service/v1/markets/...
-# namespace'ine göre), ANCAK resmi API dokümantasyonundan
-# (https://seffaflik.epias.com.tr) TEYİT EDİLMEDİ. imbalance_cost.py'nin
-# dengesizlik-maliyet-duyarlı değerlendirmesi bu veriyi kullanır - endpoint
-# doğrulanmadan fetch_imbalance_price_for_date bilerek NotImplementedError
-# fırlatır (bkz. aşağısı), yanlış bir URL'e sessizce istek atıp uydurma
-# sonuç üretmemek için.
-IMBALANCE_PRICE_URL = (
-    "https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/system-marginal-price"
-)
+# Sistem Marjinal Fiyatı (SMF) - Şeffaflık Platformu API dokümantasyonu
+# madde 5.113. URL/HTTP method/TGT auth/tarih formatı (ISO-8601) TEYİT
+# EDİLDİ; SystemMarginalPriceResponseDto'nun tam alan adları dokümanda
+# listelenmediği için _PRICE_FIELD_CANDIDATES ile tahmin ediliyor (bkz. aşağı).
+SMF_URL = "https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/system-marginal-price"
+
+# Dengesizlik Tutarı - madde 5.183. Aynı doğrulama durumu: URL/method/auth
+# teyit edildi, ImbalanceAmountResponseDto alan adları tahmin ediliyor.
+IMBALANCE_AMOUNT_URL = "https://seffaflik.epias.com.tr/electricity-service/v1/markets/imbalance/data/imbalance-amount"
+
+# SystemMarginalPriceResponseDto/ImbalanceAmountResponseDto'nun tam alan
+# adları EPİAŞ'ın API-index dokümanında listelenmiyor (sadece endpoint/
+# method/DTO adı doğrulandı, bkz. yukarısı) - bu yüzden fetch fonksiyonları
+# birkaç olası alan adını dener. Hiçbiri tutmazsa (_first_matching_field)
+# sessizce yanlış/boş sonuç üretmek yerine gerçek response'taki alan
+# adlarını gösteren net bir EpiasError fırlatılır; o hatadaki gerçek
+# adlarla bu üç listeyi güncellemek yeterli, fonksiyonların geri kalanı
+# değişmeden kalır.
+_PRICE_FIELD_CANDIDATES = ["price", "systemMarginalPrice", "smp", "smpValue", "value"]
+_AMOUNT_FIELD_CANDIDATES = ["imbalanceAmount", "amount", "netAmount", "value"]
+_DATE_FIELD_CANDIDATES = ["date", "time", "hour"]
 
 REQUEST_TIMEOUT_LOGIN = 10
 REQUEST_TIMEOUT_DATA = 15
@@ -112,46 +122,86 @@ def fetch_generation_for_date(tgt: str, plant_id: int, day: date) -> list[dict[s
     return rows or []
 
 
-def fetch_imbalance_price_for_date(tgt: str, day: date) -> list[dict[str, Any]]:
-    """
-    ŞABLON: bir günün saatlik Sistem Marjinal Fiyatı (SMF) / dengesizlik
-    fiyatı verisini çeker - imbalance_cost.py'nin dengesizlik-maliyet-duyarlı
-    değerlendirmesi için gerekli. fetch_generation_for_date ile AYNI TGT auth
-    deseni kullanılacak şekilde tasarlandı.
+def _first_matching_field(row: dict[str, Any], candidates: list[str]) -> str:
+    """İlk satırda candidates listesindeki alan adlarından hangisi varsa onu döner.
 
-    IMBALANCE_PRICE_URL doğrulanmadan bu fonksiyon KULLANILAMAZ - bilerek
-    NotImplementedError fırlatıyor. Endpoint'i EPİAŞ Şeffaflık Platformu API
-    referansından teyit ettikten sonra:
-      1. Bu NotImplementedError'ı kaldırın.
-      2. Aşağıdaki yorum satırındaki gövdeyi (fetch_generation_for_date ile
-         aynı desende) aktif hale getirip gerçek response şekline göre
-         düzeltin.
+    Hiçbiri yoksa (DTO alan adları tahminimizden farklıysa) sessizce yanlış/
+    boş sonuç üretmek yerine gerçek alan adlarını gösteren bir hata fırlatır -
+    bu hatadaki isimlerle SMF_URL/IMBALANCE_AMOUNT_URL'nin candidate
+    listelerini güncellemek, tek satırlık bir düzeltmedir.
     """
-    raise NotImplementedError(
-        "fetch_imbalance_price_for_date bir ŞABLONDUR: IMBALANCE_PRICE_URL "
-        "EPİAŞ Şeffaflık Platformu API dokümantasyonundan doğrulanmadan "
-        "kullanılamaz. Endpoint/parametre/response şeklini teyit edip bu "
-        "fonksiyonu tamamlayın (bkz. epias.py'deki yorum satırları)."
+    for name in candidates:
+        if name in row:
+            return name
+    raise EpiasError(
+        "EPİAŞ yanıtındaki alan adları tanınmadı - tahmin edilen "
+        f"{candidates} listesinde hiçbiri yok. Gerçek alanlar: {sorted(row.keys())}. "
+        "epias.py'deki _PRICE_FIELD_CANDIDATES/_AMOUNT_FIELD_CANDIDATES/"
+        "_DATE_FIELD_CANDIDATES listelerini bu gerçek alan adlarıyla güncelleyin."
     )
-    # Beklenen gövde (endpoint teyit edildikten sonra, fetch_generation_for_date
-    # ile aynı desen):
-    #
-    # headers = {"TGT": tgt, "Content-Type": "application/json", "Accept": "application/json"}
-    # payload = {
-    #     "startDate": f"{day.isoformat()}T00:00:00+03:00",
-    #     "endDate": f"{day.isoformat()}T23:59:59+03:00",
-    # }
-    # response = request_with_retries(
-    #     "POST", IMBALANCE_PRICE_URL, timeout=REQUEST_TIMEOUT_DATA,
-    #     error_context=f"Connection error while fetching imbalance price for {day}",
-    #     json=payload, headers=headers,
-    # )
-    # if response.status_code in (401, 403):
-    #     raise TokenExpiredError("Invalid Token: your session token was rejected or has expired.")
-    # if not response.ok:
-    #     raise EpiasError(f"EPİAŞ API returned an error (HTTP {response.status_code}) for {day}.")
-    # body = response.json()
-    # return body.get("items", body) if isinstance(body, dict) else body
+
+
+def _fetch_market_data_for_date(tgt: str, url: str, day: date, error_label: str) -> list[dict[str, Any]]:
+    """SMF ve dengesizlik tutarı endpoint'lerinin ortak isteği - ikisi de aynı
+    POST + TGT header + startDate/endDate (ISO-8601) desenini kullanıyor
+    (EPİAŞ Şeffaflık Platformu API dokümantasyonu, "İstemci Oluşturmak"
+    bölümü)."""
+    headers = {"TGT": tgt, "Content-Type": "application/json", "Accept": "application/json"}
+    payload = {
+        "startDate": f"{day.isoformat()}T00:00:00+03:00",
+        "endDate": f"{day.isoformat()}T23:59:59+03:00",
+    }
+
+    response = request_with_retries(
+        "POST",
+        url,
+        timeout=REQUEST_TIMEOUT_DATA,
+        error_context=f"Connection error while fetching {error_label} for {day}",
+        json=payload,
+        headers=headers,
+    )
+
+    if response.status_code in (401, 403):
+        raise TokenExpiredError(
+            "Invalid Token: your session token was rejected or has expired."
+        )
+    if not response.ok:
+        raise EpiasError(
+            f"EPİAŞ API returned an error (HTTP {response.status_code}) for {day}."
+        )
+
+    body = response.json()
+    rows = body.get("items", body) if isinstance(body, dict) else body
+    return rows or []
+
+
+def fetch_system_marginal_price_for_date(tgt: str, day: date) -> list[dict[str, Any]]:
+    """
+    Bir günün saatlik Sistem Marjinal Fiyatı (SMF) verisini çeker (madde
+    5.113 - URL/method/auth teyit edildi, response alan adları
+    _PRICE_FIELD_CANDIDATES ile tahmin ediliyor, bkz. yukarısı).
+    """
+    rows = _fetch_market_data_for_date(tgt, SMF_URL, day, "system marginal price")
+    if rows:
+        _first_matching_field(rows[0], _PRICE_FIELD_CANDIDATES)  # erken doğrula, yanlışsa hemen patlasın
+    return rows
+
+
+def fetch_imbalance_amount_for_date(tgt: str, day: date) -> list[dict[str, Any]]:
+    """
+    Bir günün saatlik Dengesizlik Tutarı verisini çeker (madde 5.183 -
+    URL/method/auth teyit edildi, response alan adları
+    _AMOUNT_FIELD_CANDIDATES ile tahmin ediliyor, bkz. yukarısı).
+    """
+    rows = _fetch_market_data_for_date(tgt, IMBALANCE_AMOUNT_URL, day, "imbalance amount")
+    if rows:
+        _first_matching_field(rows[0], _AMOUNT_FIELD_CANDIDATES)
+    return rows
+
+
+def fetch_imbalance_price_for_date(tgt: str, day: date) -> list[dict[str, Any]]:
+    """imbalance_cost.py'nin beklediği isim - fetch_system_marginal_price_for_date'e ince bir sarmalayıcı."""
+    return fetch_system_marginal_price_for_date(tgt, day)
 
 
 def fetch_generation_range(
