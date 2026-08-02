@@ -140,16 +140,18 @@ olarak EPİAŞ dengesizlik cezasının asimetrik olabileceğini hesaba katar:
   bidlenmesi gerektiğini hesaplar (newsvendor çözümü).
 - `imbalance_cost`/`evaluate_financial` — gerçek saatlik dengesizlik
   fiyatıyla bir tahmin serisinin gerçek maliyetini hesaplar. Bu fiyat verisi
-  `epias.fetch_imbalance_price_for_date` (Sistem Marjinal Fiyatı, madde
-  5.113) ve `epias.fetch_imbalance_amount_for_date` (Dengesizlik Tutarı,
-  madde 5.183) üzerinden geliyor - URL/HTTP method/TGT auth EPİAŞ Şeffaflık
-  Platformu API dokümantasyonundan **teyit edildi**. Tek eksik: response
-  DTO'sunun (`SystemMarginalPriceResponseDto`/`ImbalanceAmountResponseDto`)
-  tam alan adları dokümanda listelenmiyor, bu yüzden fonksiyonlar birkaç
-  olası isimi dener (`epias.py`'deki `_PRICE_FIELD_CANDIDATES` vb.); ilk
-  gerçek çağrıda alan adları tutmazsa sessizce yanlış sonuç üretmek yerine
-  gerçek alanları gösteren net bir hata fırlatır - o hatadaki isimlerle
-  candidate listesini güncellemek tek satırlık bir düzeltme.
+  `epias.fetch_imbalance_price_for_date` (Sistem Marjinal Fiyatı - SMF,
+  madde 5.113) üzerinden geliyor - URL/HTTP method/TGT auth **VE response
+  alan adları** (`date`, `hour`, `systemMarginalPrice`) canlı çağrıyla
+  **doğrulandı** (`check_epias_endpoints.py`, bkz. aşağısı). Dengesizlik
+  maliyeti = SMF (sistem geneli) × santralin **kendi** sapması (üretim −
+  bid); sapma zaten `data/` (gerçekleşen) ve `predict.py` (tahmin)
+  çıktılarından hesaplanıyor, EPİAŞ'tan ayrıca gelmesi gerekmiyor.
+  `epias.fetch_imbalance_amount_for_date` (Dengesizlik Tutarı, madde 5.183)
+  de eklendi ama **pratikte kullanılmıyor**: bu servis Şeffaflık
+  Platformu'nda katılımcı/santral bazlı (Karapınar'a özel) veri vermiyor,
+  muhtemelen sistem/bölge toplamını dönüyor - santrale özel dengesizlik
+  tutarı sadece EPİAŞ'ın kapalı PYS/YS hesabında görünür.
 
 ### Gün-içi piyasası yeniden-tahmin kontrolü
 
