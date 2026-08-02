@@ -26,12 +26,17 @@ GENERATION_URL = (
 # ile): {"date": "...", "hour": "...", "systemMarginalPrice": <float>}.
 SMF_URL = "https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/system-marginal-price"
 
-# Dengesizlik Tutarı - madde 5.183. URL/method/auth teyit edildi, ANCAK canlı
-# çağrı (check_epias_endpoints.py, 2026-08-02, iki farklı tarih) her ikisinde
-# de 0 satır döndü - SMF'nin aksine muhtemelen sadece startDate/endDate
-# yetmiyor, ek bir zorunlu parametre (ör. organizationId/UEVÇB kodu) eksik
-# olabilir; santral/organizasyon bazlı bir veri olması, SMF gibi sistem geneli
-# olmaması muhtemel. ImbalanceAmountResponseDto alan adları da HALA tahmin.
+# Dengesizlik Tutarı - madde 5.183. URL/method/auth teyit edildi; canlı çağrı
+# (check_epias_endpoints.py, 2026-08-02, iki farklı tarih) her ikisinde de 0
+# satır döndü. Sebebi muhtemelen eksik bir parametre DEĞİL, kavramsal bir
+# uyumsuzluk: Şeffaflık Platformu bu servisten katılımcı/santral BAZLI (yani
+# doğrudan Karapınar'a özel) dengesizlik cezasını halka açık vermiyor - bu
+# servis muhtemelen sistemin/bölgenin toplam finansal dengesizlik hacmini
+# dönüyor. Şirketlerin kendi mali uzlaştırma verisi sadece kendi kapalı
+# PYS/YS (Piyasa Yönetim Sistemi) hesabında görünür, Şeffaflık Platformu'nda
+# değil. Dolu dönse bile bu servis PLANT-ÖZEL veri vermeyeceği için
+# imbalance_cost.py'nin ihtiyacı olan şey bu değil - bkz. aşağıdaki
+# fetch_imbalance_amount_for_date'in docstring'i.
 IMBALANCE_AMOUNT_URL = "https://seffaflik.epias.com.tr/electricity-service/v1/markets/imbalance/data/imbalance-amount"
 
 # SMF alan adları yukarıda doğrulandı (systemMarginalPrice ilk denemede
@@ -193,12 +198,20 @@ def fetch_imbalance_amount_for_date(tgt: str, day: date) -> list[dict[str, Any]]
     URL/method/auth teyit edildi, response alan adları
     _AMOUNT_FIELD_CANDIDATES ile tahmin ediliyor, bkz. yukarısı).
 
-    BİLİNEN DURUM: canlı çağrıda (2026-08-02, iki farklı tarih) her ikisinde
-    de 0 satır döndü - startDate/endDate dışında bir zorunlu parametre (ör.
-    organizationId/UEVÇB kodu) eksik olabilir. SMF'nin aksine bu endpoint
-    henüz uçtan uca doğrulanmadı; boş dönüş bir hata değil ama beklenen bir
-    sonuç da değil - imbalance_cost.py'de kullanmadan önce EPİAŞ Şeffaflık
-    Platformu'ndan gerekli ek parametreyi teyit edin.
+    KULLANIM UYARISI: bu servis Şeffaflık Platformu'nda katılımcı/santral
+    BAZLI (Karapınar'a özel) dengesizlik verisini halka açık vermiyor -
+    muhtemelen sistemin/bölgenin toplam finansal hacmini dönüyor (bu yüzden
+    2026-08-02'de iki farklı tarihte 0 satır döndü). Santrale özel dengesizlik
+    tutarı sadece EPİAŞ'ın kapalı PYS/YS (Piyasa Yönetim Sistemi) hesabında
+    görünür, bu API'den ASLA gelmeyecek.
+
+    imbalance_cost.py'nin ihtiyacı olan şey zaten bu değil: dengesizlik
+    maliyeti = SMF (fetch_system_marginal_price_for_date - sistem geneli,
+    CANLI DOĞRULANDI) * santralin KENDİ sapması (predict.py'ın tahmini vs.
+    data/'daki gerçekleşen üretim - ikisi de zaten elimizde, EPİAŞ'tan
+    gelmesi gerekmiyor). Yani bu fonksiyon pratikte KULLANILMIYOR - sadece
+    referans/gelecekte bir bölgesel-hacim analizi ihtiyacı olursa diye
+    tutuluyor.
     """
     rows = _fetch_market_data_for_date(tgt, IMBALANCE_AMOUNT_URL, day, "imbalance amount")
     if rows:
