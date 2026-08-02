@@ -135,12 +135,22 @@ def erbs_decomposition(ghi: float, cos_zenith: float) -> tuple[float, float]:
     diffuse_fraction = np.clip(diffuse_fraction, 0.0, 1.0)
 
     dhi = diffuse_fraction * ghi
-    dni = max(0.0, (ghi - dhi) / cos_zenith)
+    # cos_zenith gün doğumu/batımına yakın (0.01'e çok yakın ama üstünde)
+    # çok küçük olabilir - bu bölmeyi sayısal olarak kararsız hale getirip
+    # DNI'yi fiziksel olarak imkansız değerlere şişirebilir (gözlemlenen:
+    # 8000+ W/m^2). DNI, atmosfer-dışı güneş sabitini (SOLAR_CONSTANT_W_M2)
+    # hiçbir zaman aşamaz - bu gerçek bir fiziksel üst sınır, santrale özgü
+    # bir varsayım değil. Tracker'lı panellerde bu hata özellikle önemli:
+    # tracker güneşe yakından baktığı (cos_aoi≈1) için şişirilmiş DNI'yi
+    # neredeyse olduğu gibi yutar, düz panel ise aynı saatte zaten düşük
+    # cos_zenith ile çarptığı için doğal olarak korunur.
+    dni = np.clip((ghi - dhi) / cos_zenith, 0.0, SOLAR_CONSTANT_W_M2)
     return dni, dhi
 
 
 MAX_TRACKER_ROTATION_DEG = 60.0  # tipik tek-eksen tracker mekanik dönüş limiti
 GROUND_ALBEDO = 0.2  # tipik zemin yansıma katsayısı (PVWatts/pvlib varsayılanı)
+DEFAULT_GCR = 0.4  # tipik utility-scale tek-eksen tracker ground coverage ratio (Wc/pitch) - datasheet yoksa endüstri-tipik varsayılan
 
 
 def _cos_aoi_fixed_tilt(zenith_deg: float, azimuth_deg_sun: float,
@@ -151,23 +161,59 @@ def _cos_aoi_fixed_tilt(zenith_deg: float, azimuth_deg_sun: float,
     return np.cos(zen_r) * np.cos(tilt_r) + np.sin(zen_r) * np.sin(tilt_r) * np.cos(daz_r)
 
 
+def _apply_backtracking(true_rotation_r: float, gcr: float) -> float:
+    """
+    True-tracking dönüş açısını (güneşe tam bakan, gölgelemeyi hesaba
+    katmayan açı) backtracking ile düzeltir - düşük güneş açılarında
+    (gün doğumu/batımı) sıra-arası kendi-gölgelemeyi önlemek için trackerın
+    tam güneşi takip ETMEYİP daha yataya yakın durması.
+
+    Standart formül (Lorenzo ve ark. 2011 "Tracking and back-tracking";
+    pvlib.tracking.singleaxis ile aynı): GCR = Wc/pitch (panel genişliği /
+    sıra aralığı).
+
+    Doğrulama (asimptotik sınırlar):
+      - GCR=1 (sıra arası boşluk yok) -> HER açıda tam düzleşme (rotation=0),
+        çünkü herhangi bir dönüş anında gölgeleme kaçınılmaz.
+      - GCR->0 (sıralar sonsuz uzak) -> hiç backtracking yok, true-tracking
+        aynen korunur.
+      - true_rotation=0 (öğlen) -> backtracking düzeltmesi 0.
+    Bu sınırların hepsi fiziksel olarak beklenen davranışla eşleşiyor.
+    """
+    if gcr <= 0:
+        return true_rotation_r
+    temp = min(1.0, np.cos(true_rotation_r) / gcr)
+    backtrack_correction_r = -np.sign(true_rotation_r) * np.arccos(np.clip(temp, -1.0, 1.0))
+    return true_rotation_r + backtrack_correction_r
+
+
 def _tracker_rotation_and_cos_aoi(zenith_deg: float, azimuth_deg_sun: float,
-                                   max_rotation_deg: float = MAX_TRACKER_ROTATION_DEG) -> tuple[float, float]:
+                                   max_rotation_deg: float = MAX_TRACKER_ROTATION_DEG,
+                                   gcr: float = DEFAULT_GCR) -> tuple[float, float]:
     """
     Tek-eksen, YATAY, Kuzey-Güney doğrultulu tracker için dönüş açısı ve AOI
     kosinüsü (en yaygın utility-scale tracker konfigürasyonu; farklı eksen
     azimutu/eğimi desteklenmiyor).
 
     Türetme: güneş vektörünün panel normaliyle iç çarpımını (cos AOI)
-    maksimize eden dönüş açısı. Eksen sabit K-G olduğu için güneşin K-G
-    bileşeni tracker tarafından hiç yakalanamaz - bu, tek-eksen tracker'ların
-    bilinen bir "cosine loss" kaynağıdır, fiziksel olarak beklenen bir sınır
-    (backtracking/kendi-gölgeleme modellenmiyor - ayrı bir iyileştirme).
+    maksimize eden dönüş açısı (true-tracking). Eksen sabit K-G olduğu için
+    güneşin K-G bileşeni tracker tarafından hiç yakalanamaz - bu, tek-eksen
+    tracker'ların bilinen bir "cosine loss" kaynağıdır, fiziksel olarak
+    beklenen bir sınır.
+
+    gcr (ground coverage ratio) verilirse backtracking uygulanır (bkz.
+    _apply_backtracking) - bu OLMADAN model, gerçek trackerların düşük
+    güneş açılarında YAPMADIĞI bir tam rotasyonu varsayıp ışınımı
+    olduğundan fazla tahmin eder (gözlemlenen etki: Karapınar'da
+    backtracking'siz tracker modeli düz-GHI'den DAHA KÖTÜ performans
+    gösterdi - bkz. proje geçmişi).
     """
     zen_r = np.radians(zenith_deg)
     az_r = np.radians(azimuth_deg_sun)
-    rotation_r = np.arctan2(-np.sin(zen_r) * np.sin(az_r), np.cos(zen_r))
-    rotation_r = np.clip(rotation_r, np.radians(-max_rotation_deg), np.radians(max_rotation_deg))
+    true_rotation_r = np.arctan2(-np.sin(zen_r) * np.sin(az_r), np.cos(zen_r))
+    true_rotation_r = np.clip(true_rotation_r, np.radians(-max_rotation_deg), np.radians(max_rotation_deg))
+
+    rotation_r = _apply_backtracking(true_rotation_r, gcr)
 
     cos_aoi = np.cos(zen_r) * np.cos(rotation_r) - np.sin(zen_r) * np.sin(az_r) * np.sin(rotation_r)
     return float(np.degrees(rotation_r)), float(cos_aoi)
@@ -176,7 +222,7 @@ def _tracker_rotation_and_cos_aoi(zenith_deg: float, azimuth_deg_sun: float,
 def poa_irradiance(dni: float, dhi: float, ghi: float, zenith_deg: float,
                     azimuth_deg_sun: float, tilt_deg: float | None,
                     panel_azimuth_deg: float | None, tracker_type: str | None,
-                    albedo: float = GROUND_ALBEDO) -> float:
+                    albedo: float = GROUND_ALBEDO, gcr: float = DEFAULT_GCR) -> float:
     """
     Panel düzlemindeki (plane-of-array, POA) toplam ışınımı hesaplar -
     izotropik gökyüzü modeli (Liu-Jordan): POA = doğrudan + izotropik difüz +
@@ -194,7 +240,7 @@ def poa_irradiance(dni: float, dhi: float, ghi: float, zenith_deg: float,
         return 0.0
 
     if tracker_type == "single_axis_horizontal":
-        effective_tilt_deg, cos_aoi = _tracker_rotation_and_cos_aoi(zenith_deg, azimuth_deg_sun)
+        effective_tilt_deg, cos_aoi = _tracker_rotation_and_cos_aoi(zenith_deg, azimuth_deg_sun, gcr=gcr)
     else:
         effective_tilt_deg = tilt_deg if tilt_deg is not None else 0.0
         cos_aoi = _cos_aoi_fixed_tilt(zenith_deg, azimuth_deg_sun, effective_tilt_deg,
@@ -277,7 +323,7 @@ def physical_pv_power(ghi_forecast: float, temp_c: float, capacity_mw: float,
 def _row_irradiance_and_temp(timestamp: pd.Timestamp, ghi: float, dni, dhi, temp_c: float,
                               lat: float, lon: float, tilt_deg: float | None,
                               panel_azimuth_deg: float | None, tracker_type: str | None,
-                              module_noct_c: float) -> tuple[float, float]:
+                              module_noct_c: float, gcr: float = DEFAULT_GCR) -> tuple[float, float]:
     """
     Tek bir saat için (ışınım, panel/hücre sıcaklığı) çiftini döner -
     build_physical_baseline ve calibrate_site_parameters AYNI hesaplamayı
@@ -298,7 +344,7 @@ def _row_irradiance_and_temp(timestamp: pd.Timestamp, ghi: float, dni, dhi, temp
     if dni is None or dhi is None or pd.isna(dni) or pd.isna(dhi):
         dni, dhi = erbs_decomposition(ghi, cos_z)
     azimuth_sun = solar_azimuth_deg(timestamp, lat, lon, zenith, cos_z)
-    poa = poa_irradiance(dni, dhi, ghi, zenith, azimuth_sun, tilt_deg, panel_azimuth_deg, tracker_type)
+    poa = poa_irradiance(dni, dhi, ghi, zenith, azimuth_sun, tilt_deg, panel_azimuth_deg, tracker_type, gcr=gcr)
     return poa, cell_temperature(poa, temp_c, module_noct_c)
 
 
@@ -308,14 +354,17 @@ def build_physical_baseline(df: pd.DataFrame, lat: float, lon: float,
                              tilt_deg: float | None = None,
                              panel_azimuth_deg: float | None = None,
                              tracker_type: str | None = None,
-                             module_noct_c: float = 45.0) -> pd.Series:
+                             module_noct_c: float = 45.0,
+                             gcr: float = DEFAULT_GCR) -> pd.Series:
     """
     Tüm zaman serisi için fiziksel baz tahmini üretir (MWh, saatlik ise MW=MWh).
 
     tilt_deg (veya tracker_type) verilirse: df'teki dni_forecast/dhi_forecast
     kullanılarak plane-of-array (POA) ışınımı ve NOCT tabanlı gerçek hücre
     sıcaklığı hesaplanır - eğik/tracker'lı panel geometrisi bilinen
-    santraller için (bkz. poa_irradiance, cell_temperature).
+    santraller için (bkz. poa_irradiance, cell_temperature). tracker_type
+    "single_axis_horizontal" ise gcr (ground coverage ratio) backtracking
+    için kullanılır - bkz. _apply_backtracking.
 
     tilt_deg=None ve tracker_type=None (varsayılan, santral geometrisi
     bilinmiyorsa): eski düz-GHI davranışı korunur, hiçbir sonuç değişmez.
@@ -324,7 +373,7 @@ def build_physical_baseline(df: pd.DataFrame, lat: float, lon: float,
     for _, row in df.iterrows():
         irradiance, panel_temp = _row_irradiance_and_temp(
             row['timestamp'], row['ghi_forecast'], row.get('dni_forecast'), row.get('dhi_forecast'),
-            row['temp_c'], lat, lon, tilt_deg, panel_azimuth_deg, tracker_type, module_noct_c,
+            row['temp_c'], lat, lon, tilt_deg, panel_azimuth_deg, tracker_type, module_noct_c, gcr,
         )
         p = _pv_power_core(irradiance, panel_temp, capacity_mw,
                             temp_coeff=temp_coeff, efficiency_scale=efficiency_scale)
@@ -341,7 +390,8 @@ def calibrate_site_parameters(df_calib: pd.DataFrame, lat: float, lon: float,
                                tilt_deg: float | None = None,
                                panel_azimuth_deg: float | None = None,
                                tracker_type: str | None = None,
-                               module_noct_c: float = 45.0) -> dict:
+                               module_noct_c: float = 45.0,
+                               gcr: float = DEFAULT_GCR) -> dict:
     """
     Panel markası/teknolojisi, invertör kapasitesi gibi datasheet bilgisi
     OLMADAN, sadece geçmiş (üretim, hava) verisinden santrale özgü fiziksel
@@ -375,7 +425,7 @@ def calibrate_site_parameters(df_calib: pd.DataFrame, lat: float, lon: float,
         df_calib['timestamp'], df_calib['ghi_forecast'], dni_col, dhi_col, df_calib['temp_c'],
     ):
         irr, panel_temp = _row_irradiance_and_temp(
-            ts, ghi, dni, dhi, temp, lat, lon, tilt_deg, panel_azimuth_deg, tracker_type, module_noct_c,
+            ts, ghi, dni, dhi, temp, lat, lon, tilt_deg, panel_azimuth_deg, tracker_type, module_noct_c, gcr,
         )
         irradiance_vals.append(irr)
         temp_vals.append(panel_temp)
@@ -505,14 +555,15 @@ def predict_production(df_new: pd.DataFrame, lat: float, lon: float,
                         tilt_deg: float | None = None,
                         panel_azimuth_deg: float | None = None,
                         tracker_type: str | None = None,
-                        module_noct_c: float = 45.0) -> pd.Series:
+                        module_noct_c: float = 45.0,
+                        gcr: float = DEFAULT_GCR) -> pd.Series:
     """Yeni (gelecek) veri için nihai üretim tahmini: fiziksel + ML düzeltme.
 
     ac_capacity_mw verilirse üst sınır olarak kullanılır (invertör/şebeke
     tavanı, nominal capacity_mw'den düşük olabilir - clipping'in nedeni budur);
     verilmezse capacity_mw'ye geri döner.
 
-    tilt_deg/panel_azimuth_deg/tracker_type: santral geometrisi biliniyorsa
+    tilt_deg/panel_azimuth_deg/tracker_type/gcr: santral geometrisi biliniyorsa
     POA tabanlı fiziksel model kullanılır (bkz. build_physical_baseline);
     train_residual_model/calibrate_site_parameters ile AYNI değerler
     geçilmeli, aksi halde model kendi eğitildiği fiziksel varsayımla
@@ -521,7 +572,7 @@ def predict_production(df_new: pd.DataFrame, lat: float, lon: float,
     baseline = build_physical_baseline(df_new, lat, lon, capacity_mw,
                                         temp_coeff=temp_coeff, efficiency_scale=efficiency_scale,
                                         tilt_deg=tilt_deg, panel_azimuth_deg=panel_azimuth_deg,
-                                        tracker_type=tracker_type, module_noct_c=module_noct_c)
+                                        tracker_type=tracker_type, module_noct_c=module_noct_c, gcr=gcr)
     X_new = build_features(df_new, lat, lon)
     residual_pred = residual_model.predict(X_new)
 
@@ -539,7 +590,8 @@ def predict_production_from_fleet(df_new: pd.DataFrame, lat: float, lon: float,
                                    tilt_deg: float | None = None,
                                    panel_azimuth_deg: float | None = None,
                                    tracker_type: str | None = None,
-                                   module_noct_c: float = 45.0) -> pd.Series:
+                                   module_noct_c: float = 45.0,
+                                   gcr: float = DEFAULT_GCR) -> pd.Series:
     """
     predict_production'ın train_fleet.py çıktısı (birden fazla santralin
     verisi üzerinde eğitilmiş, havuzlanmış model) için karşılığı.
@@ -553,7 +605,7 @@ def predict_production_from_fleet(df_new: pd.DataFrame, lat: float, lon: float,
     baseline = build_physical_baseline(df_new, lat, lon, capacity_mw,
                                         temp_coeff=temp_coeff, efficiency_scale=efficiency_scale,
                                         tilt_deg=tilt_deg, panel_azimuth_deg=panel_azimuth_deg,
-                                        tracker_type=tracker_type, module_noct_c=module_noct_c)
+                                        tracker_type=tracker_type, module_noct_c=module_noct_c, gcr=gcr)
     X_new = build_features(df_new, lat, lon)
     residual_pred_normalized = fleet_model.predict(X_new)
 

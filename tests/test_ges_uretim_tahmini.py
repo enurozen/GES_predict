@@ -71,6 +71,17 @@ def test_erbs_decomposition_low_clearness_is_mostly_diffuse():
     assert dhi > dni
 
 
+def test_erbs_decomposition_never_exceeds_solar_constant_near_horizon():
+    # Regression test: at cos_zenith just above the 0.01 cutoff, dividing
+    # (ghi - dhi) by cos_zenith is numerically unstable and produced
+    # physically impossible DNI (8000+ W/m^2 observed) before this was
+    # clipped - a tracker (cos_aoi near 1) would swallow that almost whole,
+    # while a flat panel's own low cos_zenith exposure masked the bug.
+    dni, dhi = g.erbs_decomposition(ghi=239.0, cos_zenith=0.02)
+    assert dni <= g.SOLAR_CONSTANT_W_M2
+    assert dni >= 0
+
+
 # --------------------------------------------------------------------------
 # poa_irradiance / AOI
 # --------------------------------------------------------------------------
@@ -107,6 +118,41 @@ def test_tracker_rotation_clips_to_max():
     rotation_deg, _ = g._tracker_rotation_and_cos_aoi(zenith_deg=85.0, azimuth_deg_sun=89.0,
                                                         max_rotation_deg=60.0)
     assert abs(rotation_deg) <= 60.0 + 1e-9
+
+
+def test_backtracking_gcr_one_forces_flat_panel():
+    # GCR=1 (rows touching edge-to-edge, zero gap) -> ANY rotation causes
+    # immediate inter-row shading, so the tracker must stay flat regardless
+    # of how low the sun is.
+    for zenith_deg, azimuth_deg_sun in [(60.0, 40.0), (85.0, 70.0), (45.0, -30.0)]:
+        rotation_deg, _ = g._tracker_rotation_and_cos_aoi(zenith_deg, azimuth_deg_sun, gcr=1.0)
+        assert rotation_deg == pytest.approx(0.0, abs=1e-6)
+
+
+def test_backtracking_tiny_gcr_matches_true_tracking():
+    # GCR -> 0 (rows infinitely far apart) -> no shading risk -> backtracking
+    # should have (almost) no effect, full true-tracking rotation applies.
+    zenith_deg, azimuth_deg_sun = 70.0, 40.0
+    rotation_true, _ = g._tracker_rotation_and_cos_aoi(zenith_deg, azimuth_deg_sun, gcr=1e-6)
+    rotation_no_backtrack = g._apply_backtracking(np.radians(rotation_true), gcr=1e-6)
+    assert rotation_true == pytest.approx(np.degrees(rotation_no_backtrack), abs=1e-3)
+
+
+def test_backtracking_reduces_rotation_magnitude_vs_true_tracking():
+    # At a realistic GCR, backtracking should never rotate MORE than
+    # unconstrained true-tracking would (it only ever pulls toward flat).
+    zenith_deg, azimuth_deg_sun = 80.0, 60.0
+    zen_r, az_r = np.radians(zenith_deg), np.radians(azimuth_deg_sun)
+    true_rotation_r = np.arctan2(-np.sin(zen_r) * np.sin(az_r), np.cos(zen_r))
+    true_rotation_r = np.clip(true_rotation_r, np.radians(-60), np.radians(60))
+
+    backtracked_deg, _ = g._tracker_rotation_and_cos_aoi(zenith_deg, azimuth_deg_sun, gcr=0.4)
+    assert abs(backtracked_deg) <= abs(np.degrees(true_rotation_r)) + 1e-9
+
+
+def test_backtracking_zero_at_solar_noon():
+    rotation_deg, _ = g._tracker_rotation_and_cos_aoi(zenith_deg=30.0, azimuth_deg_sun=0.0, gcr=0.4)
+    assert rotation_deg == pytest.approx(0.0, abs=1e-6)
 
 
 def test_poa_irradiance_zero_below_horizon():

@@ -12,6 +12,11 @@
 #   azimuth_deg       : panelin baktığı yön, derece (Güney=0, Batı=+90, Doğu=-90)
 #   tracker_type      : null (sabit/bilinmiyor) | "single_axis_horizontal"
 #   module_noct_c     : datasheet NOCT değeri (yoksa varsayılan 45.0 kullanılır)
+#   gcr               : ground coverage ratio (Wc/pitch) - sadece tracker_type
+#                       "single_axis_horizontal" iken kullanılır, backtracking
+#                       (sıra-arası kendi-gölgeleme önleme) için gerekli.
+#                       Datasheet/saha planı yoksa varsayılan 0.4 (utility-
+#                       scale tracker'larda tipik aralık) kullanılır.
 #
 # tilt_deg/azimuth_deg/tracker_type BİLİNMİYORSA null bırakın - kod bu
 # durumda otomatik olarak düz-GHI (horizontal) baz modele döner. Bilinmeyen
@@ -29,9 +34,17 @@
   # ac_capacity_mw kalibrasyonu bunu ayrıca tahmin ediyor zaten.
   capacity_mw: 1000.0
   dc_capacity_mw: 1350.0
-  # Panel tilt/azimuth ve tracker tipi datasheet'ten doğrulanmadı - bilerek
-  # null bırakıldı. Kod bu yüzden düz-GHI baz modele dönüyor (bkz. yukarıdaki
-  # not); gerçek değerler öğrenilirse buraya eklenip POA modeli devreye girer.
+  # Tracker tipi kullanıcı tarafından doğrulandı (2026-08-02): panelller
+  # güneşi takip ediyor, yatay/tek-eksen (single-axis horizontal) - utility-
+  # scale GES'lerde en yaygın konfigürasyon. Bu artık POA transposition'ı
+  # (bkz. ges_uretim_tahmini.poa_irradiance) tracker yoluna sokuyor - düz-GHI
+  # varsayımı yerine gerçek panel geometrisi kullanılıyor.
+  # Tilt/azimuth tracker için ANLAMSIZ (panel her saat dinamik olarak
+  # döndürülüyor, kod bunu solar_azimuth_deg'den kendisi hesaplıyor) - null
+  # bırakılması doğru, eksik değil.
   tilt_deg: null
   azimuth_deg: null
-  tracker_type: null
+  tracker_type: "single_axis_horizontal"
+  # Gerçek sıra aralığı/GCR bilinmiyor - endüstri-tipik varsayılan (0.4)
+  # kullanılıyor (gcr alanı eklenmediği için ges_uretim_tahmini.DEFAULT_GCR
+  # devreye giriyor). Gerçek saha planı öğrenilirse buraya eklenebilir.
