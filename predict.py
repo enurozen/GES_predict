@@ -19,7 +19,7 @@ import joblib
 from ges_uretim_tahmini import predict_production
 from plants import geometry_kwargs
 from shared import ApiError
-from weather import fetch_weather_forecast
+from weather import fetch_weather_forecast, fetch_weather_forecast_ensemble
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -35,6 +35,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Path to trained model (joblib). Defaults to models/<plant_id>/model.joblib",
     )
     parser.add_argument("--output", required=True, help="Output CSV path")
+    parser.add_argument(
+        "--ensemble", action="store_true",
+        help="Average multiple NWP models (ECMWF/GFS/ICON) instead of a single "
+             "one, to reduce model-specific forecast error - no extra cost/credentials needed",
+    )
     return parser.parse_args(argv)
 
 
@@ -57,10 +62,12 @@ def main(argv: list[str] | None = None) -> int:
     lat, lon, capacity_mw = plant["lat"], plant["lon"], plant["capacity_mw"]
 
     try:
+        fetch_fn = fetch_weather_forecast_ensemble if args.ensemble else fetch_weather_forecast
         logger.info(
-            "Fetching weather forecast for %s (%s to %s)...", plant["name"], args.start, args.end,
+            "Fetching %sweather forecast for %s (%s to %s)...",
+            "ensemble " if args.ensemble else "", plant["name"], args.start, args.end,
         )
-        weather_df = fetch_weather_forecast(lat, lon, args.start, args.end)
+        weather_df = fetch_fn(lat, lon, args.start, args.end)
         if weather_df.empty:
             logger.error(
                 "No forecast data returned - Open-Meteo's forecast API only covers "

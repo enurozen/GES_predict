@@ -20,6 +20,18 @@ GENERATION_URL = (
     "realtime-generation-bulk"
 )
 
+# ŞABLON - Sistem Marjinal Fiyatı (SMF) / dengesizlik fiyatı için muhtemel
+# endpoint (Şeffaflık Platformu'nun genel electricity-service/v1/markets/...
+# namespace'ine göre), ANCAK resmi API dokümantasyonundan
+# (https://seffaflik.epias.com.tr) TEYİT EDİLMEDİ. imbalance_cost.py'nin
+# dengesizlik-maliyet-duyarlı değerlendirmesi bu veriyi kullanır - endpoint
+# doğrulanmadan fetch_imbalance_price_for_date bilerek NotImplementedError
+# fırlatır (bkz. aşağısı), yanlış bir URL'e sessizce istek atıp uydurma
+# sonuç üretmemek için.
+IMBALANCE_PRICE_URL = (
+    "https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/system-marginal-price"
+)
+
 REQUEST_TIMEOUT_LOGIN = 10
 REQUEST_TIMEOUT_DATA = 15
 MAX_WORKERS = 2
@@ -98,6 +110,48 @@ def fetch_generation_for_date(tgt: str, plant_id: int, day: date) -> list[dict[s
     body = response.json()
     rows = body.get("items", body) if isinstance(body, dict) else body
     return rows or []
+
+
+def fetch_imbalance_price_for_date(tgt: str, day: date) -> list[dict[str, Any]]:
+    """
+    ŞABLON: bir günün saatlik Sistem Marjinal Fiyatı (SMF) / dengesizlik
+    fiyatı verisini çeker - imbalance_cost.py'nin dengesizlik-maliyet-duyarlı
+    değerlendirmesi için gerekli. fetch_generation_for_date ile AYNI TGT auth
+    deseni kullanılacak şekilde tasarlandı.
+
+    IMBALANCE_PRICE_URL doğrulanmadan bu fonksiyon KULLANILAMAZ - bilerek
+    NotImplementedError fırlatıyor. Endpoint'i EPİAŞ Şeffaflık Platformu API
+    referansından teyit ettikten sonra:
+      1. Bu NotImplementedError'ı kaldırın.
+      2. Aşağıdaki yorum satırındaki gövdeyi (fetch_generation_for_date ile
+         aynı desende) aktif hale getirip gerçek response şekline göre
+         düzeltin.
+    """
+    raise NotImplementedError(
+        "fetch_imbalance_price_for_date bir ŞABLONDUR: IMBALANCE_PRICE_URL "
+        "EPİAŞ Şeffaflık Platformu API dokümantasyonundan doğrulanmadan "
+        "kullanılamaz. Endpoint/parametre/response şeklini teyit edip bu "
+        "fonksiyonu tamamlayın (bkz. epias.py'deki yorum satırları)."
+    )
+    # Beklenen gövde (endpoint teyit edildikten sonra, fetch_generation_for_date
+    # ile aynı desen):
+    #
+    # headers = {"TGT": tgt, "Content-Type": "application/json", "Accept": "application/json"}
+    # payload = {
+    #     "startDate": f"{day.isoformat()}T00:00:00+03:00",
+    #     "endDate": f"{day.isoformat()}T23:59:59+03:00",
+    # }
+    # response = request_with_retries(
+    #     "POST", IMBALANCE_PRICE_URL, timeout=REQUEST_TIMEOUT_DATA,
+    #     error_context=f"Connection error while fetching imbalance price for {day}",
+    #     json=payload, headers=headers,
+    # )
+    # if response.status_code in (401, 403):
+    #     raise TokenExpiredError("Invalid Token: your session token was rejected or has expired.")
+    # if not response.ok:
+    #     raise EpiasError(f"EPİAŞ API returned an error (HTTP {response.status_code}) for {day}.")
+    # body = response.json()
+    # return body.get("items", body) if isinstance(body, dict) else body
 
 
 def fetch_generation_range(

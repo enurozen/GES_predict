@@ -18,6 +18,7 @@ No API key required:
 from datetime import date
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from shared import ApiError, request_with_retries
@@ -25,6 +26,12 @@ from shared import ApiError, request_with_retries
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 HISTORICAL_FORECAST_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
+
+# Open-Meteo'nun desteklediği model kimlikleri zaman içinde değişebilir -
+# güncel liste için open-meteo.com/en/docs'taki "Weather models" bölümüne
+# bakın. Burada üç büyük operasyonel NWP merkezi (ECMWF, NOAA, DWD) seçildi -
+# tek modele göre sistematik (model-specific) bias'ı azaltmak için.
+DEFAULT_ENSEMBLE_MODELS = ["ecmwf_ifs025", "gfs_seamless", "icon_seamless"]
 
 REQUEST_TIMEOUT = 15
 
@@ -114,3 +121,88 @@ def fetch_historical_forecast(lat: float, lon: float, start: date, end: date) ->
     it silently assumes a perfect weather forecast and overstates accuracy.
     """
     return _fetch_hourly(HISTORICAL_FORECAST_URL, lat, lon, start, end)
+
+
+def fetch_weather_forecast_ensemble(lat: float, lon: float, start: date, end: date,
+                                     models: list[str] | None = None) -> pd.DataFrame:
+    """
+    Aynı anda birden fazla NWP modelinden (varsayılan: ECMWF, GFS, ICON) gün-
+    öncesi hava tahmini çeker; ensemble ORTALAMASINI ve model-arası standart
+    sapmasını (belirsizlik göstergesi) döner. Open-Meteo bunu ek ücret/kimlik
+    bilgisi gerektirmeden, tek istekte `models` parametresiyle sağlıyor - tek
+    modele bağımlı kalmaktan kaynaklanan sistematik (model-specific) hatayı
+    azaltmanın en ucuz yolu bu.
+
+    Returns aynı sütunlar (ghi_forecast, dni_forecast, dhi_forecast, temp_c,
+    cloud_cover) + her biri için *_std belirsizlik sütunu (ör. ghi_forecast_std).
+    Bir modelin verisi eksikse (ör. model kimliği değişmişse) o model sessizce
+    ortalamadan çıkarılır; hiçbiri bulunamazsa suffix'siz tek-model anahtarına
+    (fetch_weather_forecast'ın kullandığı) düşülür.
+
+    NOT: Sadece api.open-meteo.com/v1/forecast (gelecek tarihler) çoklu model
+    destekliyor - archive/historical-forecast endpoint'leri tek model/
+    reanalysis döner, bu fonksiyon onlarla kullanılmaz.
+    """
+    if models is None:
+        models = DEFAULT_ENSEMBLE_MODELS
+
+    params: dict[str, Any] = {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+        "hourly": HOURLY_VARIABLES,
+        "models": ",".join(models),
+        "timezone": "auto",
+    }
+
+    response = request_with_retries(
+        "GET",
+        FORECAST_URL,
+        timeout=REQUEST_TIMEOUT,
+        error_context=f"Could not fetch ensemble weather data for ({lat}, {lon})",
+        params=params,
+    )
+
+    if not response.ok:
+        raise ApiError(
+            f"Open-Meteo API returned an error (HTTP {response.status_code}) "
+            f"for ({lat}, {lon})."
+        )
+
+    body = response.json()
+    hourly = body.get("hourly", {})
+    timestamps = pd.to_datetime(hourly.get("time", []))
+    n = len(timestamps)
+
+    result: dict[str, Any] = {"timestamp": timestamps}
+    for var_name, out_col, pct_to_fraction in [
+        ("shortwave_radiation", "ghi_forecast", False),
+        ("direct_normal_irradiance", "dni_forecast", False),
+        ("diffuse_radiation", "dhi_forecast", False),
+        ("temperature_2m", "temp_c", False),
+        ("cloudcover", "cloud_cover", True),
+    ]:
+        per_model = [
+            hourly[key] for model in models
+            if (key := f"{var_name}_{model}") in hourly
+        ]
+        if not per_model and var_name in hourly:
+            # Model kimlikleri tanınmadı (ör. Open-Meteo'nun model listesi
+            # değişmiş) - suffix'siz tek-model anahtarına düş.
+            per_model = [hourly[var_name]]
+
+        if per_model:
+            arr = np.array(per_model, dtype=float)
+            mean = np.nanmean(arr, axis=0)
+            std = np.nanstd(arr, axis=0)
+            if pct_to_fraction:
+                mean, std = mean / 100.0, std / 100.0
+        else:
+            mean = np.full(n, np.nan)
+            std = np.full(n, np.nan)
+
+        result[out_col] = mean
+        result[f"{out_col}_std"] = std
+
+    return pd.DataFrame(result)

@@ -532,6 +532,37 @@ def predict_production(df_new: pd.DataFrame, lat: float, lon: float,
     return final_pred
 
 
+def predict_production_from_fleet(df_new: pd.DataFrame, lat: float, lon: float,
+                                   capacity_mw: float, fleet_model,
+                                   temp_coeff: float = -0.004, efficiency_scale: float = 1.0,
+                                   ac_capacity_mw: float | None = None,
+                                   tilt_deg: float | None = None,
+                                   panel_azimuth_deg: float | None = None,
+                                   tracker_type: str | None = None,
+                                   module_noct_c: float = 45.0) -> pd.Series:
+    """
+    predict_production'ın train_fleet.py çıktısı (birden fazla santralin
+    verisi üzerinde eğitilmiş, havuzlanmış model) için karşılığı.
+
+    Fark: fleet_model, MWh değil KAPASİTEYE GÖRE NORMALİZE residual (MW/MWp)
+    tahmin ediyor (bkz. train_fleet.build_pooled_dataset) - çünkü farklı
+    boyuttaki santrallerin ham MWh residual'ları doğrudan havuzlanamaz. Bu
+    yüzden model çıktısı burada capacity_mw ile GERİ ÇARPILIYOR; sıradan
+    predict_production (tek santral, MWh residual) ile karıştırılmamalı.
+    """
+    baseline = build_physical_baseline(df_new, lat, lon, capacity_mw,
+                                        temp_coeff=temp_coeff, efficiency_scale=efficiency_scale,
+                                        tilt_deg=tilt_deg, panel_azimuth_deg=panel_azimuth_deg,
+                                        tracker_type=tracker_type, module_noct_c=module_noct_c)
+    X_new = build_features(df_new, lat, lon)
+    residual_pred_normalized = fleet_model.predict(X_new)
+
+    final_pred = baseline + residual_pred_normalized * capacity_mw
+    upper_bound = ac_capacity_mw if ac_capacity_mw is not None else capacity_mw
+    final_pred = final_pred.clip(lower=0, upper=upper_bound)
+    return final_pred
+
+
 # ----------------------------------------------------------------------
 # 3) DEMO: Sentetik veriyle uçtan uca çalıştırma
 #    (Gerçek EPİAŞ/saha verinle bu kısmı kendi CSV'ni okuyarak değiştir)

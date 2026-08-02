@@ -57,6 +57,24 @@ def test_main_writes_predictions_csv(tmp_path, monkeypatch):
     assert len(out) == 2
 
 
+def test_main_ensemble_flag_uses_ensemble_fetcher(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    model_dir = tmp_path / "models" / "2579"
+    model_dir.mkdir(parents=True)
+    joblib.dump(_fake_bundle(), model_dir / "model.joblib")
+
+    with patch("predict.fetch_weather_forecast_ensemble", return_value=_weather_df()) as m_ens, \
+         patch("predict.fetch_weather_forecast") as m_single:
+        rc = predict.main([
+            "--plant-id", "2579", "--start", "2026-07-22", "--end", "2026-07-22",
+            "--output", "predictions/out.csv", "--ensemble",
+        ])
+
+    assert rc == 0
+    m_ens.assert_called_once_with(37.79, 33.58, date(2026, 7, 22), date(2026, 7, 22))
+    m_single.assert_not_called()
+
+
 def test_main_missing_model_fails_cleanly(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
