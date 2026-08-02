@@ -1,9 +1,8 @@
-name: Check EPİAŞ SMF/Imbalance Endpoints
+name: Check EPİAŞ SMF Endpoint
 
-# One-off diagnostic: confirms the real field names in EPİAŞ's SMF/imbalance
-# amount responses (URL/method/auth already confirmed against the API docs,
-# only the response DTO field names need a live check). See
-# check_epias_endpoints.py and epias.py's _PRICE_FIELD_CANDIDATES etc.
+# Diagnostic: re-confirms the real field names in EPİAŞ's SMF response if
+# needed (already confirmed as of 2026-08-02, see epias.py's
+# _PRICE_FIELD_CANDIDATES). See check_epias_endpoints.py.
 on:
   workflow_dispatch:
     inputs:
@@ -42,7 +41,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "## EPİAŞ endpoint kontrolü"
+            echo "## EPİAŞ SMF endpoint kontrolü"
             echo '```'
             cat check_output.txt
             echo '```'

@@ -26,26 +26,20 @@ GENERATION_URL = (
 # ile): {"date": "...", "hour": "...", "systemMarginalPrice": <float>}.
 SMF_URL = "https://seffaflik.epias.com.tr/electricity-service/v1/markets/bpm/data/system-marginal-price"
 
-# Dengesizlik Tutarı - madde 5.183. URL/method/auth teyit edildi; canlı çağrı
-# (check_epias_endpoints.py, 2026-08-02, iki farklı tarih) her ikisinde de 0
-# satır döndü. Sebebi muhtemelen eksik bir parametre DEĞİL, kavramsal bir
-# uyumsuzluk: Şeffaflık Platformu bu servisten katılımcı/santral BAZLI (yani
-# doğrudan Karapınar'a özel) dengesizlik cezasını halka açık vermiyor - bu
-# servis muhtemelen sistemin/bölgenin toplam finansal dengesizlik hacmini
-# dönüyor. Şirketlerin kendi mali uzlaştırma verisi sadece kendi kapalı
-# PYS/YS (Piyasa Yönetim Sistemi) hesabında görünür, Şeffaflık Platformu'nda
-# değil. Dolu dönse bile bu servis PLANT-ÖZEL veri vermeyeceği için
-# imbalance_cost.py'nin ihtiyacı olan şey bu değil - bkz. aşağıdaki
-# fetch_imbalance_amount_for_date'in docstring'i.
-IMBALANCE_AMOUNT_URL = "https://seffaflik.epias.com.tr/electricity-service/v1/markets/imbalance/data/imbalance-amount"
+# NOT: EPİAŞ Şeffaflık Platformu'nun "Dengesizlik Tutarı" servisi (madde
+# 5.183) bilinçli olarak KULLANILMIYOR - katılımcı/santral bazlı (Karapınar'a
+# özel) veri halka açık verilmiyor, muhtemelen sistem/bölge toplamını
+# dönüyor (canlı çağrıda 2026-08-02'de iki farklı tarihte 0 satır). Santrale
+# özel dengesizlik tutarı sadece EPİAŞ'ın kapalı PYS/YS (Piyasa Yönetim
+# Sistemi) hesabında görünür. imbalance_cost.py zaten buna ihtiyaç duymuyor:
+# dengesizlik maliyeti = SMF (sistem geneli, aşağıda) × santralin KENDİ
+# sapması (predict.py'ın tahmini vs. data/'daki gerçekleşen üretim).
 
-# SMF alan adları yukarıda doğrulandı (systemMarginalPrice ilk denemede
-# tuttu). ImbalanceAmountResponseDto'nunkiler hâlâ tahmin - hiçbiri tutmazsa
-# (_first_matching_field) sessizce yanlış/boş sonuç üretmek yerine gerçek
-# response'taki alan adlarını gösteren net bir EpiasError fırlatılır.
+# SMF alan adları canlı çağrıyla doğrulandı (systemMarginalPrice ilk
+# denemede tuttu) - hiçbiri tutmazsa (_first_matching_field) sessizce
+# yanlış/boş sonuç üretmek yerine gerçek response'taki alan adlarını
+# gösteren net bir EpiasError fırlatılır.
 _PRICE_FIELD_CANDIDATES = ["systemMarginalPrice", "price", "smp", "smpValue", "value"]
-_AMOUNT_FIELD_CANDIDATES = ["imbalanceAmount", "amount", "netAmount", "value"]
-_DATE_FIELD_CANDIDATES = ["date", "time", "hour"]
 
 REQUEST_TIMEOUT_LOGIN = 10
 REQUEST_TIMEOUT_DATA = 15
@@ -132,8 +126,8 @@ def _first_matching_field(row: dict[str, Any], candidates: list[str]) -> str:
 
     Hiçbiri yoksa (DTO alan adları tahminimizden farklıysa) sessizce yanlış/
     boş sonuç üretmek yerine gerçek alan adlarını gösteren bir hata fırlatır -
-    bu hatadaki isimlerle SMF_URL/IMBALANCE_AMOUNT_URL'nin candidate
-    listelerini güncellemek, tek satırlık bir düzeltmedir.
+    bu hatadaki isimlerle SMF_URL'nin candidate listesini güncellemek, tek
+    satırlık bir düzeltmedir.
     """
     for name in candidates:
         if name in row:
@@ -141,16 +135,17 @@ def _first_matching_field(row: dict[str, Any], candidates: list[str]) -> str:
     raise EpiasError(
         "EPİAŞ yanıtındaki alan adları tanınmadı - tahmin edilen "
         f"{candidates} listesinde hiçbiri yok. Gerçek alanlar: {sorted(row.keys())}. "
-        "epias.py'deki _PRICE_FIELD_CANDIDATES/_AMOUNT_FIELD_CANDIDATES/"
-        "_DATE_FIELD_CANDIDATES listelerini bu gerçek alan adlarıyla güncelleyin."
+        "epias.py'deki _PRICE_FIELD_CANDIDATES listesini bu gerçek alan "
+        "adlarıyla güncelleyin."
     )
 
 
-def _fetch_market_data_for_date(tgt: str, url: str, day: date, error_label: str) -> list[dict[str, Any]]:
-    """SMF ve dengesizlik tutarı endpoint'lerinin ortak isteği - ikisi de aynı
-    POST + TGT header + startDate/endDate (ISO-8601) desenini kullanıyor
-    (EPİAŞ Şeffaflık Platformu API dokümantasyonu, "İstemci Oluşturmak"
-    bölümü)."""
+def fetch_system_marginal_price_for_date(tgt: str, day: date) -> list[dict[str, Any]]:
+    """
+    Bir günün saatlik Sistem Marjinal Fiyatı (SMF) verisini çeker (madde
+    5.113 - URL/method/auth/tarih formatı (ISO-8601 startDate/endDate) VE
+    response alan adları CANLI ÇAĞRIYLA DOĞRULANDI, bkz. yukarısı).
+    """
     headers = {"TGT": tgt, "Content-Type": "application/json", "Accept": "application/json"}
     payload = {
         "startDate": f"{day.isoformat()}T00:00:00+03:00",
@@ -159,9 +154,9 @@ def _fetch_market_data_for_date(tgt: str, url: str, day: date, error_label: str)
 
     response = request_with_retries(
         "POST",
-        url,
+        SMF_URL,
         timeout=REQUEST_TIMEOUT_DATA,
-        error_context=f"Connection error while fetching {error_label} for {day}",
+        error_context=f"Connection error while fetching system marginal price for {day}",
         json=payload,
         headers=headers,
     )
@@ -177,45 +172,9 @@ def _fetch_market_data_for_date(tgt: str, url: str, day: date, error_label: str)
 
     body = response.json()
     rows = body.get("items", body) if isinstance(body, dict) else body
-    return rows or []
-
-
-def fetch_system_marginal_price_for_date(tgt: str, day: date) -> list[dict[str, Any]]:
-    """
-    Bir günün saatlik Sistem Marjinal Fiyatı (SMF) verisini çeker (madde
-    5.113 - URL/method/auth teyit edildi, response alan adları
-    _PRICE_FIELD_CANDIDATES ile tahmin ediliyor, bkz. yukarısı).
-    """
-    rows = _fetch_market_data_for_date(tgt, SMF_URL, day, "system marginal price")
+    rows = rows or []
     if rows:
         _first_matching_field(rows[0], _PRICE_FIELD_CANDIDATES)  # erken doğrula, yanlışsa hemen patlasın
-    return rows
-
-
-def fetch_imbalance_amount_for_date(tgt: str, day: date) -> list[dict[str, Any]]:
-    """
-    Bir günün saatlik Dengesizlik Tutarı verisini çeker (madde 5.183 -
-    URL/method/auth teyit edildi, response alan adları
-    _AMOUNT_FIELD_CANDIDATES ile tahmin ediliyor, bkz. yukarısı).
-
-    KULLANIM UYARISI: bu servis Şeffaflık Platformu'nda katılımcı/santral
-    BAZLI (Karapınar'a özel) dengesizlik verisini halka açık vermiyor -
-    muhtemelen sistemin/bölgenin toplam finansal hacmini dönüyor (bu yüzden
-    2026-08-02'de iki farklı tarihte 0 satır döndü). Santrale özel dengesizlik
-    tutarı sadece EPİAŞ'ın kapalı PYS/YS (Piyasa Yönetim Sistemi) hesabında
-    görünür, bu API'den ASLA gelmeyecek.
-
-    imbalance_cost.py'nin ihtiyacı olan şey zaten bu değil: dengesizlik
-    maliyeti = SMF (fetch_system_marginal_price_for_date - sistem geneli,
-    CANLI DOĞRULANDI) * santralin KENDİ sapması (predict.py'ın tahmini vs.
-    data/'daki gerçekleşen üretim - ikisi de zaten elimizde, EPİAŞ'tan
-    gelmesi gerekmiyor). Yani bu fonksiyon pratikte KULLANILMIYOR - sadece
-    referans/gelecekte bir bölgesel-hacim analizi ihtiyacı olursa diye
-    tutuluyor.
-    """
-    rows = _fetch_market_data_for_date(tgt, IMBALANCE_AMOUNT_URL, day, "imbalance amount")
-    if rows:
-        _first_matching_field(rows[0], _AMOUNT_FIELD_CANDIDATES)
     return rows
 
 

@@ -77,31 +77,6 @@ def test_fetch_smf_http_error():
 
 
 # --------------------------------------------------------------------------
-# fetch_imbalance_amount_for_date
-# --------------------------------------------------------------------------
-
-def test_fetch_imbalance_amount_success_with_recognized_field_name():
-    body = {"items": [{"date": "2026-08-01T00:00:00+03:00", "imbalanceAmount": -12.3}]}
-    resp = _mock_response(200, json_data=body)
-
-    with patch("shared.requests.request", return_value=resp) as mock_request:
-        rows = epias.fetch_imbalance_amount_for_date("TGT", date(2026, 8, 1))
-
-    assert rows == body["items"]
-    called_args = mock_request.call_args.args
-    assert called_args[1] == epias.IMBALANCE_AMOUNT_URL
-
-
-def test_fetch_imbalance_amount_unrecognized_field_names_raises_diagnostic_error():
-    body = {"items": [{"saat": "00:00", "miktar": -12.3}]}
-    resp = _mock_response(200, json_data=body)
-
-    with patch("shared.requests.request", return_value=resp):
-        with pytest.raises(ApiError, match="alan adları tanınmadı"):
-            epias.fetch_imbalance_amount_for_date("TGT", date(2026, 8, 1))
-
-
-# --------------------------------------------------------------------------
 # fetch_imbalance_price_for_date (compat wrapper)
 # --------------------------------------------------------------------------
 
