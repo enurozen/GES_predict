@@ -16,8 +16,7 @@ import logging
 import sys
 from pathlib import Path
 
-import numpy as np
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error
 
 from evaluate import hit_rate, normalized_mae
 from ges_uretim_tahmini import build_physical_baseline, calibrate_site_parameters, predict_production, train_residual_model

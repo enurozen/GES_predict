@@ -4,7 +4,6 @@ from unittest.mock import patch
 
 import joblib
 import pandas as pd
-import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
