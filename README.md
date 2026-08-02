@@ -146,12 +146,11 @@ olarak EPİAŞ dengesizlik cezasının asimetrik olabileceğini hesaba katar:
   **doğrulandı** (`check_epias_endpoints.py`, bkz. aşağısı). Dengesizlik
   maliyeti = SMF (sistem geneli) × santralin **kendi** sapması (üretim −
   bid); sapma zaten `data/` (gerçekleşen) ve `predict.py` (tahmin)
-  çıktılarından hesaplanıyor, EPİAŞ'tan ayrıca gelmesi gerekmiyor.
-  `epias.fetch_imbalance_amount_for_date` (Dengesizlik Tutarı, madde 5.183)
-  de eklendi ama **pratikte kullanılmıyor**: bu servis Şeffaflık
-  Platformu'nda katılımcı/santral bazlı (Karapınar'a özel) veri vermiyor,
-  muhtemelen sistem/bölge toplamını dönüyor - santrale özel dengesizlik
-  tutarı sadece EPİAŞ'ın kapalı PYS/YS hesabında görünür.
+  çıktılarından hesaplanıyor, EPİAŞ'tan ayrıca gelmesi gerekmiyor. EPİAŞ'ın
+  "Dengesizlik Tutarı" servisi (madde 5.183) bilinçli olarak KULLANILMIYOR -
+  Şeffaflık Platformu'nda katılımcı/santral bazlı (Karapınar'a özel) veri
+  vermiyor; santrale özel dengesizlik tutarı sadece EPİAŞ'ın kapalı PYS/YS
+  hesabında görünür.
 
 ### Gün-içi piyasası yeniden-tahmin kontrolü
 
