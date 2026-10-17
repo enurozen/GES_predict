@@ -47,6 +47,9 @@ hava durumu verisini birleştirip eğitim seti üreten bir veri pipeline'ı.
   belirlenen bir eşiği aşan saatleri işaretler; gün-içi piyasasında pozisyon
   düzeltmesi değerlendirilmesi için insan karar vericiye sinyal — gerçek
   emir gönderimi (trading) KAPSAM DIŞI, bilinçli olarak implement edilmedi.
+- `api.py` — `train.py`/`evaluate.py`/`predict.py`'ı HTTP endpoint'leri
+  arkasında sunan FastAPI sarmalayıcı (platformlaşmanın ilk katmanı, bkz.
+  aşağıdaki "API" bölümü). Model kodunun kendisine dokunmaz.
 
 ## Kurulum
 
@@ -220,6 +223,33 @@ bir backfill'i tekrar çalıştırmak güvenlidir, aynı günü tekrar çekmez);
 ```bash
 pytest
 ```
+
+## API (`api.py`)
+
+Platformlaşmanın ilk katmanı: mevcut CLI'ların (`train.py`/`evaluate.py`/
+`predict.py`) HTTP üzerinden çağrılabilmesi için bir FastAPI sarmalayıcı.
+Fiziksel/ML model kodunun (`ges_uretim_tahmini.py`) tek satırına dokunmaz -
+her endpoint aynı CLI'ların kullandığı fonksiyonları çağırır.
+
+```bash
+uvicorn api:app --reload
+```
+
+Sonra tarayıcıda **http://127.0.0.1:8000/docs** ile interaktif dokümantasyon
+(Swagger UI) açılır. Endpoint'ler:
+
+| Method | Path | CLI karşılığı |
+|---|---|---|
+| GET | `/health` | - |
+| GET | `/plants` | `plants.yaml`'daki tüm santraller |
+| GET | `/plants/{id}` | tek santral bilgisi |
+| POST | `/plants/{id}/train` | `train.py` |
+| GET | `/plants/{id}/evaluate?test_days=14` | `evaluate.py` |
+| POST | `/plants/{id}/predict?start=...&end=...&ensemble=false` | `predict.py` |
+
+`train`/`evaluate` ağ erişimi gerektirmez (yerel `data/` CSV'lerini
+kullanır); `predict` Open-Meteo'ya erişim gerektirir ve önce o santral için
+`train` çağrılmış (model dosyası diskte) olmalıdır.
 
 ## Günlük otomasyon (`daily_datapull.yml`)
 
