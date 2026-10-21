@@ -18,10 +18,15 @@ class PlantNotFoundError(Exception):
     """Raised when a plant ID has no entry in the registry."""
 
 
+def list_plants(registry_path: Path = REGISTRY_PATH) -> dict[int, dict[str, Any]]:
+    """Return the full plant registry as {plant_id: plant_dict}."""
+    with open(registry_path, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
 def load_plant(plant_id: int, registry_path: Path = REGISTRY_PATH) -> dict[str, Any]:
     """Look up a plant's lat/lon/capacity_mw/name from the registry file."""
-    with open(registry_path, encoding="utf-8") as f:
-        registry = yaml.safe_load(f) or {}
+    registry = list_plants(registry_path)
 
     plant = registry.get(plant_id)
     if plant is None:
